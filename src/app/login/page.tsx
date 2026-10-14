@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useForm } from "react-hook-form"
@@ -27,7 +27,7 @@ function Brand({ className }: { className?: string }) {
   return (
     <div className={cn("flex flex-col items-start gap-2", className)}>
       <span className="inline-flex">
-        <Image src="/login/DocuLogo.png" alt="DocuSoft" width={300} height={125} className="h-16 w-auto" priority />
+        <Image src="/login/logo.png" alt="DocuSoft" width={300} height={125} className="h-16 w-auto" priority />
       </span>
       <span className="font-(family-name:--font-login-mono) block text-[11px] tracking-[0.18em] uppercase opacity-60">
         Records Warehouse
@@ -36,7 +36,7 @@ function Brand({ className }: { className?: string }) {
   )
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { login } = useAuth()
@@ -196,5 +196,13 @@ export default function LoginPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   )
 }

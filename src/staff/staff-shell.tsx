@@ -58,7 +58,7 @@ export function StaffShell({ children }: { children: ReactNode }) {
           <SidebarHeader>
             <div className="flex items-center justify-center gap-2 px-2 py-1">
               <Image
-                src="/login/DocuLogo.png"
+                src="/login/logo.png"
                 alt="DocuSoft"
                 width={300}
                 height={125}
