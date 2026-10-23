@@ -1,6 +1,7 @@
 import { createApi } from "@reduxjs/toolkit/query/react"
 import type { BaseQueryFn } from "@reduxjs/toolkit/query"
 
+import { DOCUSOFT_BASE_URL } from "@/store/docusoftConfig"
 import { getDocusoftCredentials } from "@/store/docusoftCreds"
 
 // RTK Query slice for DocuSoft's own .asmx API — called DIRECTLY from the browser, not through
@@ -12,7 +13,6 @@ import { getDocusoftCredentials } from "@/store/docusoftCreds"
 // TanStack Query (used for everything else in this app) would need per-hook staleTime tuning to
 // get the same effect. Reference implementation for the request/response shape: C:\Aakash Singh\
 // projects\docusoftpractice (js_class/API_Class.js, AllService.js, CommanCLS.js).
-const DOCUSOFT_BASE_URL = "https://accountancy.mydocusoft.com/PracticeServices.asmx"
 
 interface DocusoftRequest {
   method: string // DocuSoft method name, e.g. "Json_GetFolders"
