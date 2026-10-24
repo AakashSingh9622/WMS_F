@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 
 import {
+  projectIdOf,
   useGetAllClientsQuery,
   useGetClientAddressesQuery,
   useGetClientCardQuery,
@@ -25,7 +26,12 @@ function mergeAddress(a: DocusoftAddress | undefined): string {
 export function useClientCard(clientId: string) {
   const folderId = useAppSelector((state) => state.clientsUi.folderId)
   const selectedClient = useAppSelector((state) => state.clientsUi.selectedClient)
-  const projectId = folderId ? Number(folderId) : undefined
+  // The folder picked on the Clients screen; with "All folders", the folder of the client that was opened there.
+  const projectId = folderId
+    ? Number(folderId)
+    : selectedClient?.ClientID === clientId
+      ? projectIdOf(selectedClient)
+      : undefined
 
   const card = useGetClientCardQuery({ projectId: projectId ?? 0, clientId }, { skip: projectId === undefined })
   const addresses = useGetClientAddressesQuery(clientId)
@@ -74,8 +80,9 @@ export function useClientContacts(clientId: string, clientProjectId?: number) {
   const folderId = useAppSelector((state) => state.clientsUi.folderId)
   const selectedClient = useAppSelector((state) => state.clientsUi.selectedClient)
   // The client object's own project id first; else the folder the client was opened from on the Clients screen.
+  const opened = selectedClient?.ClientID === clientId
   const projectId =
-    clientProjectId ?? (folderId && selectedClient?.ClientID === clientId ? Number(folderId) : undefined)
+    clientProjectId ?? (opened ? (folderId ? Number(folderId) : projectIdOf(selectedClient)) : undefined)
 
   const query = useGetClientContactsQuery({ clientId, projectId }, { skip: !clientId })
 

@@ -18,6 +18,32 @@ export function useClient(clientId: string) {
   })
 }
 
+const clientStatsSchema = z.object({
+  items: z.array(
+    z.object({
+      clientId: z.string(),
+      inStorage: z.number(), // boxes in our warehouse (on a shelf, at Goods-In, on an order but not gone yet)
+      out: z.number(), // with the client (dispatched / coming back)
+      boxes: z.number(), // every box not destroyed or given back for good
+      openOrders: z.number(),
+      lastActivityAt: z.string().optional(),
+      balance: z.number().optional(), // only when the user may see billing
+      overdue: z.number().optional(),
+    }),
+  ),
+  seesBilling: z.boolean(),
+})
+export type ClientStats = z.infer<typeof clientStatsSchema>["items"][number]
+
+/** What we hold for every client (boxes, open orders, balance) in one call — the Clients list joins it to DocuSoft's. */
+export function useClientStats() {
+  return useQuery({
+    queryKey: ["clients", "stats"],
+    queryFn: async () => parse(clientStatsSchema, await apiClient.get("/clients/stats")),
+    staleTime: 60_000,
+  })
+}
+
 const clientBoxesResponseSchema = z.object({ items: z.array(boxSchema), total: z.number() })
 
 export function useClientBoxes(clientId: string, params: { q?: string; page?: number } = {}) {
