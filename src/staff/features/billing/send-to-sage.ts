@@ -10,6 +10,7 @@ import {
   getSageAccessToken,
   getSageBusiness,
   linkSageContact,
+  sageLineAmounts,
   type SageContactInput,
 } from "@/api/sage"
 
@@ -125,6 +126,7 @@ export async function sendInvoiceToSage({
           quantity: l.quantity,
           unit_price: l.unitPrice,
           tax_rate_id: l.taxRateId,
+          ...sageLineAmounts(l.quantity, l.unitPrice, l.taxRateId),
         })),
       })
     }

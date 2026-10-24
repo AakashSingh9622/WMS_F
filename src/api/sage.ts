@@ -463,6 +463,9 @@ export interface SageInvoiceLine {
   quantity: number
   unit_price: number
   tax_rate_id: string
+  net_amount: number
+  tax_amount: number // required by Sage (see sageLineAmounts)
+  total_amount: number
 }
 
 export interface SageInvoiceInput {
@@ -593,10 +596,24 @@ export async function createSageInvoice(input: SageInvoiceInput): Promise<SageIn
 }
 
 /** Common Sage UK VAT rates. Check them against the Sage business once: ids can differ per region/plan. */
-export const SAGE_TAX_RATES: { id: string; label: string }[] = [
-  { id: "GB_STANDARD", label: "Standard (20%)" },
-  { id: "GB_LOWER", label: "Reduced (5%)" },
-  { id: "GB_ZERO", label: "Zero rated (0%)" },
-  { id: "GB_EXEMPT", label: "Exempt" },
-  { id: "GB_NO_TAX", label: "No VAT (outside the scope)" },
+export const SAGE_TAX_RATES: { id: string; label: string; percentage: number }[] = [
+  { id: "GB_STANDARD", label: "Standard (20%)", percentage: 20 },
+  { id: "GB_LOWER", label: "Reduced (5%)", percentage: 5 },
+  { id: "GB_ZERO", label: "Zero rated (0%)", percentage: 0 },
+  { id: "GB_EXEMPT", label: "Exempt", percentage: 0 },
+  { id: "GB_NO_TAX", label: "No VAT (outside the scope)", percentage: 0 },
 ]
+
+const money = (n: number) => Math.round(n * 100) / 100
+
+/**
+ * Net / VAT / total for one invoice line. Sage requires the VAT amount on every line (it doesn't work it out from the
+ * rate: "This field is required: currency tax amount"), so we send it, rounded to the penny per line like Sage does.
+ */
+export function sageLineAmounts(quantity: number, unitPrice: number, taxRateId: string) {
+  const rate = SAGE_TAX_RATES.find((t) => t.id === taxRateId)
+  if (!rate) throw new SageError(`Unknown VAT rate "${taxRateId}" — choose one of the listed VAT rates`)
+  const net = money(quantity * unitPrice)
+  const tax = money((net * rate.percentage) / 100)
+  return { net_amount: net, tax_amount: tax, total_amount: money(net + tax) }
+}
