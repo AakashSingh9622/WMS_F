@@ -24,6 +24,9 @@ const nextConfig: NextConfig = {
       { source: "/api/audit", destination: `${BACKEND_API_URL}/api/audit` },
       { source: "/api/audit/:path*", destination: `${BACKEND_API_URL}/api/audit/:path*` },
       { source: "/api/admin-audit", destination: `${BACKEND_API_URL}/api/admin-audit` },
+      // Warehouse invoices (the Sage calls themselves go from the browser to DocuSoft's proxy, not through here).
+      { source: "/api/invoices", destination: `${BACKEND_API_URL}/api/invoices` },
+      { source: "/api/invoices/:path*", destination: `${BACKEND_API_URL}/api/invoices/:path*` },
       // Staff users + roles (Settings → Users & roles). Not /api/clients/:id/users — that one is still MSW.
       { source: "/api/users", destination: `${BACKEND_API_URL}/api/users` },
       { source: "/api/users/:path*", destination: `${BACKEND_API_URL}/api/users/:path*` },

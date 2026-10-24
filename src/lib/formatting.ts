@@ -46,3 +46,17 @@ export function todayISO(): string {
   const d = new Date()
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
+
+/** "yyyy-mm-dd" + n days, same format (calendar arithmetic, no time-zone drift). */
+export function addDaysISO(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d + days))
+  return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`
+}
+
+const gbp = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" })
+
+/** £1,234.50 */
+export function formatMoney(value: number): string {
+  return gbp.format(value)
+}

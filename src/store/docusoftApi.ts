@@ -24,35 +24,52 @@ interface DocusoftApiError {
   message: string
 }
 
-// Custom baseQuery (not fetchBaseQuery) because every call needs the stored creds merged into
-// the body, and DocuSoft's ".asmx" response convention ({d: "<json string>"}) needs unwrapping.
-const docusoftBaseQuery: BaseQueryFn<DocusoftRequest, unknown, DocusoftApiError> = async ({ method, params }) => {
-  const creds = getDocusoftCredentials()
-  if (!creds)
-    return {
-      error: { message: "Not connected to DocuSoft — please sign in again" },
-    }
+export class DocusoftError extends Error {
+  status?: number
+  constructor(message: string, status?: number) {
+    super(message)
+    this.name = "DocusoftError"
+    this.status = status
+  }
+}
 
+/**
+ * One DocuSoft .asmx call with the stored creds merged into the body. Returns the unwrapped `d` — parsed JSON, or the
+ * plain string when DocuSoft answers with text (e.g. "Success"). Throws DocusoftError. For one-off calls outside RTK
+ * Query (the Sage integration's credential / client-field calls); cached reference data goes through docusoftApi below.
+ */
+export async function callDocusoft(method: string, params?: Record<string, unknown>): Promise<unknown> {
+  const creds = getDocusoftCredentials()
+  if (!creds) throw new DocusoftError("Not connected to DocuSoft — please sign in again")
   try {
     const res = await fetch(`${DOCUSOFT_BASE_URL}/${method}`, {
       method: "POST",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ ...creds, ...params }),
     })
-    if (!res.ok) {
-      return {
-        error: {
-          status: res.status,
-          message: `DocuSoft API error: ${res.status} ${res.statusText}`,
-        },
-      }
-    }
+    if (!res.ok) throw new DocusoftError(`DocuSoft API error: ${res.status} ${res.statusText}`, res.status)
     const wrapper = (await res.json()) as { d?: string }
-    const data = wrapper.d ? JSON.parse(wrapper.d) : {}
-    return { data }
+    if (!wrapper.d) return {}
+    try {
+      return JSON.parse(wrapper.d)
+    } catch {
+      return wrapper.d
+    }
+  } catch (err) {
+    if (err instanceof DocusoftError) throw err
+    throw new DocusoftError(err instanceof Error ? err.message : "Network error calling DocuSoft")
+  }
+}
+
+// Custom baseQuery (not fetchBaseQuery) because every call needs the stored creds merged into
+// the body, and DocuSoft's ".asmx" response convention ({d: "<json string>"}) needs unwrapping.
+const docusoftBaseQuery: BaseQueryFn<DocusoftRequest, unknown, DocusoftApiError> = async ({ method, params }) => {
+  try {
+    return { data: await callDocusoft(method, params) }
   } catch (err) {
     return {
       error: {
+        status: err instanceof DocusoftError ? err.status : undefined,
         message: err instanceof Error ? err.message : "Network error calling DocuSoft",
       },
     }

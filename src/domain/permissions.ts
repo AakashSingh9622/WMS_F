@@ -14,6 +14,8 @@ export type Permission =
   | "orders.operate" // create, schedule, start, cancel, dispatch, confirm destruction, digitize, complete
   | "orders.approve" // approve / reject requested orders
   | "orders.authorise" // record a client's destruction / digitizing authorisation
+  | "billing.view" // see invoices and the Sage settings
+  | "billing.manage" // prepare invoices, send them to Sage, change the Sage settings
 
 const ALL: Permission[] = [
   "layout.manage",
@@ -25,6 +27,8 @@ const ALL: Permission[] = [
   "orders.operate",
   "orders.approve",
   "orders.authorise",
+  "billing.view",
+  "billing.manage",
 ]
 
 const ROLE_PERMISSIONS: Partial<Record<Role, Permission[]>> = {
@@ -41,8 +45,8 @@ const ROLE_PERMISSIONS: Partial<Record<Role, Permission[]>> = {
   operations_manager: ["audit.read", "boxes.operate", "orders.operate", "orders.approve", "orders.authorise"],
   staff_operator: ["boxes.operate", "orders.operate"],
   records_manager: ["audit.read", "boxes.hold", "orders.authorise"],
-  finance_manager: ["audit.read"],
-  auditor: ["audit.read"],
+  finance_manager: ["audit.read", "billing.view", "billing.manage"],
+  auditor: ["audit.read", "billing.view"],
 }
 
 /** Roles an admin can hand out in Settings → Users. staff_admin only comes from DocuSoft's admin flag. */
@@ -73,8 +77,8 @@ export const ROLE_INFO: Partial<Record<Role, { label: string; description: strin
     label: "Records manager",
     description: "Holds, records client destruction/digitizing authorisations",
   },
-  finance_manager: { label: "Finance manager", description: "Read-only for now (billing comes later), audit log" },
-  auditor: { label: "Auditor", description: "Read-only, including the audit log" },
+  finance_manager: { label: "Finance manager", description: "Invoices and Sage, audit log" },
+  auditor: { label: "Auditor", description: "Read-only, including the audit log and invoices" },
 }
 
 export function roleLabel(role: Role): string {
