@@ -5,7 +5,7 @@ import { useMemo, useState } from "react"
 import { Pencil } from "@/components/icons"
 import { toast } from "sonner"
 
-import { useAuth } from "@/auth/useAuth"
+import { useCan } from "@/auth/useAuth"
 import { useBoxSearch } from "@/api/boxes"
 import { useRack, useRackRowStats, useRackSlots, useUpdateRack, useUpdateSlot } from "@/api/warehouses"
 import type { RackRowStats } from "@/api/warehouses"
@@ -224,14 +224,14 @@ const STATE_BADGE: Record<RackRow["state"], { label: string; className: string }
 function SelectedRowPanel({
   row,
   boxes,
-  isAdmin,
+  canManageLayout,
   loadingBoxes,
   onToggleBlocked,
   togglePending,
 }: {
   row: RackRow
   boxes: Box[]
-  isAdmin: boolean
+  canManageLayout: boolean
   loadingBoxes: boolean
   onToggleBlocked: () => void
   togglePending: boolean
@@ -309,7 +309,7 @@ function SelectedRowPanel({
         </div>
 
         <div className="mt-auto flex gap-2">
-          {isAdmin && (
+          {canManageLayout && (
             <Button
               variant="outline"
               className="w-full"
@@ -331,8 +331,7 @@ function SelectedRowPanel({
 // --- Screen ----------------------------------------------------------------
 
 export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string; rackId: string }) {
-  const { user } = useAuth()
-  const isAdmin = user?.roles.includes("staff_admin") ?? false
+  const canManageLayout = useCan("layout.manage")
 
   const { data: rack, isLoading: loadingRack } = useRack(rackId)
   const { data: slots, isLoading: loadingSlots, isError } = useRackSlots(rackId)
@@ -395,7 +394,7 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
             )}
           </div>
         )}
-        {isAdmin && rack && <EditRackDialog rack={rack} warehouseId={warehouseId} />}
+        {canManageLayout && rack && <EditRackDialog rack={rack} warehouseId={warehouseId} />}
       </div>
 
       {isError && <p className="text-destructive text-sm">Couldn&apos;t load this rack. Try refreshing.</p>}
@@ -525,7 +524,7 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
             key={selectedRow.row}
             row={selectedRow}
             boxes={rowBoxes?.items ?? []}
-            isAdmin={isAdmin}
+            canManageLayout={canManageLayout}
             loadingBoxes={loadingBoxes}
             onToggleBlocked={() => toggleBlocked(selectedRow)}
             togglePending={updateSlot.isPending}

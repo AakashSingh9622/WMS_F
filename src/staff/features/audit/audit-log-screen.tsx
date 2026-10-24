@@ -8,6 +8,7 @@ import { Download } from "@/components/icons"
 import { toast } from "sonner"
 
 import { fetchAllAuditEvents, useAuditSearch } from "@/api/audit"
+import { useAdminAudit } from "@/api/users"
 import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 import { describeAuditEvent } from "@/domain/audit"
 import { AuditTimeline } from "@/components/audit-timeline"
@@ -29,13 +30,46 @@ function downloadCsv(rows: string[][], filename: string) {
   URL.revokeObjectURL(url)
 }
 
+/** Roles, warehouse layout and settings changes — things that don't belong to any one box. */
+function SystemChanges() {
+  const [page, setPage] = useState(1)
+  const { data, isLoading } = useAdminAudit({ page, pageSize: PAGE_SIZE })
+  return (
+    <>
+      <p className="text-muted-foreground shrink-0 text-sm tabular-nums">
+        {(data?.total ?? 0).toLocaleString("en-GB")} changes
+      </p>
+      <div className="min-h-0 flex-1 overflow-y-auto pr-2">
+        {isLoading ? (
+          <Skeleton className="h-64 w-full" />
+        ) : !data?.items.length ? (
+          <p className="text-muted-foreground text-sm">No system changes recorded yet.</p>
+        ) : (
+          <ul className="bg-card divide-y rounded-2xl border">
+            {data.items.map((e) => (
+              <li key={e.id} className="space-y-0.5 px-4 py-3 text-sm">
+                <div>{e.summary}</div>
+                <div className="text-muted-foreground text-xs">
+                  {e.actor.name} · {formatDateTime(e.at)}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <PaginationFooter page={page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />
+    </>
+  )
+}
+
 export function AuditLogScreen() {
+  const [view, setView] = useState<"boxes" | "system">("boxes")
   const [clientId, setClientId] = useState("all")
   const [page, setPage] = useState(1)
   const [exporting, setExporting] = useState(false)
   const { data: clients } = useGetClientsWithDetailsQuery()
   const filters = { clientId: clientId === "all" ? undefined : clientId }
-  const { data, isLoading } = useAuditSearch({ ...filters, page, pageSize: PAGE_SIZE })
+  const { data, isLoading } = useAuditSearch({ ...filters, page, pageSize: PAGE_SIZE }, { enabled: view === "boxes" })
 
   async function exportCsv() {
     setExporting(true)
@@ -72,50 +106,65 @@ export function AuditLogScreen() {
         className="shrink-0"
       />
 
-      <div className="bg-card flex shrink-0 items-center gap-2 rounded-2xl border p-3 shadow-xs">
-        <Select
-          value={clientId}
-          onValueChange={(v) => {
-            setClientId(v ?? "all")
-            setPage(1)
-          }}
-        >
-          <SelectTrigger className="w-56">
-            <SelectValue
-              placeholder="All clients"
-              getLabel={(id) =>
-                id === "all" ? "All clients" : (clients?.find((c) => c.ClientId === id)?.Client ?? id)
-              }
-            />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All clients</SelectItem>
-            {clients?.map((c) => (
-              <SelectItem key={c.ClientId} value={c.ClientId}>
-                {c.Client}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Button variant="outline" size="sm" className="ml-auto gap-1.5" onClick={exportCsv} disabled={exporting}>
-          <Download className="size-3.5" />
-          {exporting ? "Exporting…" : "Export CSV"}
+      <div className="flex shrink-0 gap-2" role="group" aria-label="What to show">
+        <Button size="sm" variant={view === "boxes" ? "default" : "outline"} onClick={() => setView("boxes")}>
+          Box events
+        </Button>
+        <Button size="sm" variant={view === "system" ? "default" : "outline"} onClick={() => setView("system")}>
+          System changes
         </Button>
       </div>
 
-      <p className="text-muted-foreground shrink-0 text-sm tabular-nums">
-        {(data?.total ?? 0).toLocaleString("en-GB")} events
-      </p>
+      {view === "system" ? (
+        <SystemChanges />
+      ) : (
+        <>
+          <div className="bg-card flex shrink-0 items-center gap-2 rounded-2xl border p-3 shadow-xs">
+            <Select
+              value={clientId}
+              onValueChange={(v) => {
+                setClientId(v ?? "all")
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-56">
+                <SelectValue
+                  placeholder="All clients"
+                  getLabel={(id) =>
+                    id === "all" ? "All clients" : (clients?.find((c) => c.ClientId === id)?.Client ?? id)
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All clients</SelectItem>
+                {clients?.map((c) => (
+                  <SelectItem key={c.ClientId} value={c.ClientId}>
+                    {c.Client}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-2">
-        {isLoading ? (
-          <Skeleton className="h-64 w-full" />
-        ) : (
-          <AuditTimeline events={data?.items ?? []} orderHref={(id) => `/app/orders/${id}`} />
-        )}
-      </div>
-      <PaginationFooter page={page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />
+            <Button variant="outline" size="sm" className="ml-auto gap-1.5" onClick={exportCsv} disabled={exporting}>
+              <Download className="size-3.5" />
+              {exporting ? "Exporting…" : "Export CSV"}
+            </Button>
+          </div>
+
+          <p className="text-muted-foreground shrink-0 text-sm tabular-nums">
+            {(data?.total ?? 0).toLocaleString("en-GB")} events
+          </p>
+
+          <div className="min-h-0 flex-1 overflow-y-auto pr-2">
+            {isLoading ? (
+              <Skeleton className="h-64 w-full" />
+            ) : (
+              <AuditTimeline events={data?.items ?? []} orderHref={(id) => `/app/orders/${id}`} />
+            )}
+          </div>
+          <PaginationFooter page={page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />
+        </>
+      )}
     </div>
   )
 }

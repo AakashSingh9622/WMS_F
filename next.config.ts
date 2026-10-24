@@ -23,6 +23,10 @@ const nextConfig: NextConfig = {
       { source: "/api/settings/:path*", destination: `${BACKEND_API_URL}/api/settings/:path*` },
       { source: "/api/audit", destination: `${BACKEND_API_URL}/api/audit` },
       { source: "/api/audit/:path*", destination: `${BACKEND_API_URL}/api/audit/:path*` },
+      { source: "/api/admin-audit", destination: `${BACKEND_API_URL}/api/admin-audit` },
+      // Staff users + roles (Settings → Users & roles). Not /api/clients/:id/users — that one is still MSW.
+      { source: "/api/users", destination: `${BACKEND_API_URL}/api/users` },
+      { source: "/api/users/:path*", destination: `${BACKEND_API_URL}/api/users/:path*` },
       // Per-client detail summary + Boxes/Orders tabs are real; only /users stays on MSW.
       { source: "/api/clients/:clientId", destination: `${BACKEND_API_URL}/api/clients/:clientId` },
       { source: "/api/clients/:clientId/boxes", destination: `${BACKEND_API_URL}/api/clients/:clientId/boxes` },

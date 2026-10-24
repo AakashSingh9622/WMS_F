@@ -13,7 +13,19 @@ export const actorSchema = z.object({
 })
 export type Actor = z.infer<typeof actorSchema>
 
-export const roleSchema = z.enum(["staff_admin", "staff_operator", "client_admin", "client_user"])
+// Staff roles beyond staff_admin/staff_operator are assigned in Settings → Users; what each can do is in
+// src/domain/permissions.ts.
+export const roleSchema = z.enum([
+  "staff_admin",
+  "staff_operator",
+  "warehouse_admin",
+  "operations_manager",
+  "records_manager",
+  "finance_manager",
+  "auditor",
+  "client_admin",
+  "client_user",
+])
 export type Role = z.infer<typeof roleSchema>
 
 export const userSchema = z.object({

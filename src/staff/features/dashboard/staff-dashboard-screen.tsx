@@ -15,6 +15,7 @@ import {
 import type { AppIcon } from "@/components/icons"
 
 import { useAuth } from "@/auth/useAuth"
+import { can, type Permission } from "@/domain/permissions"
 import { useWarehouses } from "@/api/warehouses"
 import { useOrderSearch } from "@/api/orders"
 import { useBoxSearch } from "@/api/boxes"
@@ -36,33 +37,45 @@ interface QuickAction {
   label: string
   hint: string
   icon: AppIcon
+  /** Hidden from users without it (e.g. auditors only get "Find a box"). */
+  permission?: Permission
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { href: "/app/boxes/new", label: "Register boxes", hint: "Add boxes & print labels", icon: PackagePlus },
+  {
+    href: "/app/boxes/new",
+    label: "Register boxes",
+    hint: "Add boxes & print labels",
+    icon: PackagePlus,
+    permission: "boxes.operate",
+  },
   {
     href: "/app/orders/new?type=collection",
     label: "Collection order",
     hint: "Bring boxes in",
     icon: ORDER_TYPE_META.collection.icon,
+    permission: "orders.operate",
   },
   {
     href: "/app/orders/new?type=dispatch",
     label: "Dispatch order",
     hint: "Send boxes out",
     icon: ORDER_TYPE_META.dispatch.icon,
+    permission: "orders.operate",
   },
   {
     href: "/app/orders/new?type=destruction",
     label: "Destruction order",
     hint: "Destroy boxes",
     icon: ORDER_TYPE_META.destruction.icon,
+    permission: "orders.operate",
   },
   {
     href: "/app/orders/new?type=digitize",
     label: "Digitize order",
     hint: "Scan boxes",
     icon: ORDER_TYPE_META.digitize.icon,
+    permission: "orders.operate",
   },
   { href: "/app/boxes", label: "Find a box", hint: "Search or scan", icon: Search },
 ]
@@ -248,7 +261,8 @@ export function StaffDashboardScreen() {
   const totalCapacity = warehouses?.reduce((sum, w) => sum + w.totalCapacity, 0) ?? 0
   const overallPercent = capacityPercent(totalUsed, totalCapacity)
   const overallLevel = capacityLevel(totalUsed, totalCapacity)
-  const isAdmin = user?.roles.includes("staff_admin") ?? false // the Audit log page is admin-only
+  const canReadAudit = can(user?.roles, "audit.read") // the Audit log page needs it
+  const quickActions = QUICK_ACTIONS.filter((a) => !a.permission || can(user?.roles, a.permission))
 
   // One sentence under the greeting: what is waiting right now.
   const waiting = [
@@ -298,7 +312,7 @@ export function StaffDashboardScreen() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {QUICK_ACTIONS.map((action) => (
+            {quickActions.map((action) => (
               <QuickActionTile key={action.href} action={action} />
             ))}
           </div>
@@ -411,7 +425,7 @@ export function StaffDashboardScreen() {
             <h2 id="recent-activity" className="text-sm font-semibold">
               Recent activity
             </h2>
-            {isAdmin && (
+            {canReadAudit && (
               <Link href="/app/audit" className="text-primary text-xs underline-offset-4 hover:underline">
                 View all
               </Link>

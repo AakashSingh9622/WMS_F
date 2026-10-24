@@ -3,10 +3,41 @@
 import Link from "next/link"
 
 import { useClient } from "@/api/clients"
+import { useCan } from "@/auth/useAuth"
 import { useClientCard } from "@/hooks/useClientCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+
+/** "New order" / "Register boxes" for this client — each only for users allowed to do it. */
+function ClientQuickActions({ clientId }: { clientId: string }) {
+  const canOrder = useCan("orders.operate")
+  const canRegister = useCan("boxes.operate")
+  return (
+    <div className="flex gap-2">
+      {canOrder && (
+        <Button
+          nativeButton={false}
+          variant="outline"
+          size="sm"
+          render={<Link href={`/app/orders/new?clientId=${clientId}`} />}
+        >
+          New order
+        </Button>
+      )}
+      {canRegister && (
+        <Button
+          nativeButton={false}
+          variant="outline"
+          size="sm"
+          render={<Link href={`/app/boxes/new?clientId=${clientId}`} />}
+        >
+          Register boxes
+        </Button>
+      )}
+    </div>
+  )
+}
 
 export function ClientDetailHeader({ clientId }: { clientId: string }) {
   const { data: client, isLoading } = useClient(clientId)
@@ -24,24 +55,7 @@ export function ClientDetailHeader({ clientId }: { clientId: string }) {
           <h1 className="text-lg font-semibold">Client</h1>
           <span className="text-muted-foreground font-mono text-sm">{clientId}</span>
         </div>
-        <div className="flex gap-2">
-          <Button
-            nativeButton={false}
-            variant="outline"
-            size="sm"
-            render={<Link href={`/app/orders/new?clientId=${clientId}`} />}
-          >
-            New order
-          </Button>
-          <Button
-            nativeButton={false}
-            variant="outline"
-            size="sm"
-            render={<Link href={`/app/boxes/new?clientId=${clientId}`} />}
-          >
-            Register boxes
-          </Button>
-        </div>
+        <ClientQuickActions clientId={clientId} />
       </div>
     )
   }
@@ -63,24 +77,7 @@ export function ClientDetailHeader({ clientId }: { clientId: string }) {
           {client.boxCount} boxes · {client.openOrderCount} open orders
         </p>
       </div>
-      <div className="flex gap-2">
-        <Button
-          nativeButton={false}
-          variant="outline"
-          size="sm"
-          render={<Link href={`/app/orders/new?clientId=${client.id}`} />}
-        >
-          New order
-        </Button>
-        <Button
-          nativeButton={false}
-          variant="outline"
-          size="sm"
-          render={<Link href={`/app/boxes/new?clientId=${client.id}`} />}
-        >
-          Register boxes
-        </Button>
-      </div>
+      <ClientQuickActions clientId={client.id} />
     </div>
   )
 }

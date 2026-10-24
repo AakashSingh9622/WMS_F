@@ -4,6 +4,7 @@ import { todayISO } from "@/lib/formatting"
 import { useState } from "react"
 import { toast } from "sonner"
 
+import { useAuth } from "@/auth/useAuth"
 import { getOrderActions } from "@/domain/orders"
 import {
   useApproveOrder,
@@ -87,7 +88,8 @@ function TextFieldAction({
 }
 
 export function OrderActions({ order }: { order: Order }) {
-  const actions = getOrderActions(order)
+  const { user } = useAuth()
+  const actions = getOrderActions(order, user?.roles ?? [])
 
   const approve = useApproveOrder()
   const reject = useRejectOrder()

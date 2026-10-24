@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { useAuth } from "@/auth/useAuth"
+import { useCan } from "@/auth/useAuth"
 import {
   useMarkBoxMissing,
   useMarkLabelsPrinted,
@@ -179,35 +179,39 @@ function MissingDialog({ box }: { box: Box }) {
 }
 
 export function BoxActions({ box }: { box: Box }) {
-  const { user } = useAuth()
-  const isAdmin = user?.roles.includes("staff_admin") ?? false
+  const canOperate = useCan("boxes.operate")
+  const canHold = useCan("boxes.hold")
   const releaseHold = useReleaseBoxHold()
   const markPrinted = useMarkLabelsPrinted()
 
-  if (box.status === "destroyed") return null
+  if (box.status === "destroyed" || (!canOperate && !canHold)) return null
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={markPrinted.isPending}
-        onClick={() => {
-          window.open(`/print/labels?boxIds=${box.id}`, "_blank")
-          markPrinted.mutate([box.id], { onError })
-        }}
-      >
-        Reprint label
-      </Button>
+      {canOperate && (
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={markPrinted.isPending}
+            onClick={() => {
+              window.open(`/print/labels?boxIds=${box.id}`, "_blank")
+              markPrinted.mutate([box.id], { onError })
+            }}
+          >
+            Reprint label
+          </Button>
 
-      <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/app/boxes/${box.id}/move`} />}>
-        {box.status === "missing" ? "Found — place in a slot" : "Move"}
-      </Button>
+          <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/app/boxes/${box.id}/move`} />}>
+            {box.status === "missing" ? "Found — place in a slot" : "Move"}
+          </Button>
 
-      <EditDetailsDialog box={box} />
+          <EditDetailsDialog box={box} />
+        </>
+      )}
 
-      {isAdmin && !box.onHold && <HoldDialog box={box} />}
-      {isAdmin && box.onHold && (
+      {canHold && !box.onHold && <HoldDialog box={box} />}
+      {canHold && box.onHold && (
         <Button
           variant="outline"
           size="sm"
@@ -223,7 +227,7 @@ export function BoxActions({ box }: { box: Box }) {
         </Button>
       )}
 
-      {box.status !== "missing" && <MissingDialog box={box} />}
+      {canOperate && box.status !== "missing" && <MissingDialog box={box} />}
     </div>
   )
 }

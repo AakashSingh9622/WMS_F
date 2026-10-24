@@ -1,7 +1,7 @@
-import { requireRole } from "@/auth/session"
+import { requirePermission } from "@/auth/session"
 import { BoxSizesScreen } from "@/staff/features/settings/box-sizes-screen"
 
 export default async function BoxSizesSettingsPage() {
-  await requireRole("staff_admin")
+  await requirePermission("settings.manage")
   return <BoxSizesScreen />
 }

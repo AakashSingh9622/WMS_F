@@ -1,4 +1,5 @@
-import type { Box, Order, OrderStatus, OrderType } from "@/api/types"
+import type { Box, Order, OrderStatus, OrderType, Role } from "@/api/types"
+import { can } from "@/domain/permissions"
 import { canTransition } from "@/mocks/orderMachine"
 
 /** Why a box can't be added to a new order of this type, or null if it's eligible (spec §4). */
@@ -43,23 +44,26 @@ export interface OrderActions {
 }
 
 /** Which action buttons the staff order-detail screen should show, given status/type/role (spec §7). */
-export function getOrderActions(order: Order): OrderActions {
+export function getOrderActions(order: Order, roles: readonly Role[]): OrderActions {
   const s = order.status
   const next = (to: OrderStatus) => canTransition(s, to)
+  const operate = can(roles, "orders.operate")
+  const approve = can(roles, "orders.approve")
+  const authorise = can(roles, "orders.authorise")
 
   return {
-    canApprove: next("approved"),
-    canReject: next("rejected"),
-    canSchedule: next("scheduled"),
-    canStart: next("in_progress"),
-    canCancel: next("cancelled"),
-    canDispatch: s === "in_progress" && order.type === "dispatch",
+    canApprove: approve && next("approved"),
+    canReject: approve && next("rejected"),
+    canSchedule: operate && next("scheduled"),
+    canStart: operate && next("in_progress"),
+    canCancel: operate && next("cancelled"),
+    canDispatch: operate && s === "in_progress" && order.type === "dispatch",
     canAuthoriseDestruction:
-      order.type === "destruction" && !order.destruction && (s === "approved" || s === "scheduled"),
+      authorise && order.type === "destruction" && !order.destruction && (s === "approved" || s === "scheduled"),
     canAuthoriseDigitization:
-      order.type === "digitize" && !order.digitization && (s === "approved" || s === "scheduled"),
-    canFixBoxScan: order.type === "digitize" && (s === "scheduled" || s === "in_progress"),
-    canDestroy: s === "in_progress" && order.type === "destruction" && !!order.destruction,
-    canComplete: s === "in_progress" && order.type === "collection",
+      authorise && order.type === "digitize" && !order.digitization && (s === "approved" || s === "scheduled"),
+    canFixBoxScan: operate && order.type === "digitize" && (s === "scheduled" || s === "in_progress"),
+    canDestroy: operate && s === "in_progress" && order.type === "destruction" && !!order.destruction,
+    canComplete: operate && s === "in_progress" && order.type === "collection",
   }
 }

@@ -5,6 +5,7 @@ import { formatDate, formatDateTime } from "@/lib/formatting"
 import Link from "next/link"
 
 import { useOrder, useOrderLines } from "@/api/orders"
+import { useCan } from "@/auth/useAuth"
 import { useAuditSearch } from "@/api/audit"
 import { OrderActions } from "@/staff/features/orders/order-actions"
 import { OrderTypeLabel } from "@/components/order-type-icon"
@@ -46,6 +47,7 @@ function LineLocation({ line }: { line: OrderLine }) {
 
 export function OrderDetailScreen({ orderId }: { orderId: string }) {
   const { data: order, isLoading } = useOrder(orderId)
+  const canRegister = useCan("boxes.operate")
   const { data: lines } = useOrderLines(orderId)
   const { data: activity } = useAuditSearch({ orderId, pageSize: 100 })
 
@@ -225,7 +227,7 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
                 <p>
                   <span className="text-muted-foreground">Expected new boxes</span> {order.collection.expectedNewBoxes}
                 </p>
-                {order.status !== "completed" && order.status !== "cancelled" && (
+                {canRegister && order.status !== "completed" && order.status !== "cancelled" && (
                   <Link
                     href={`/app/boxes/new?orderId=${order.id}&clientId=${order.clientId}`}
                     className="text-primary block hover:underline"
