@@ -11,6 +11,7 @@ import { docusoftApi } from "@/store/docusoftApi"
 import { clientsUiReset } from "@/store/clientsUiSlice"
 import type { Role } from "@/api/types"
 import { can, type Permission } from "@/domain/permissions"
+import { clearSageTokens } from "@/api/sage"
 
 export interface AuthUser {
   id: string
@@ -118,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await fetch("/api/auth/logout", { method: "POST" })
       clearSessionCookie()
       clearDocusoftCredentials()
+      clearSageTokens() // the Sage sign-in belongs to this user too
       dispatch(docusoftApi.util.resetApiState())
       dispatch(clientsUiReset())
     },

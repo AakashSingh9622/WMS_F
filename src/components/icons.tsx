@@ -72,6 +72,7 @@ export const MATERIAL_ICON_NAMES = [
   "pin_drop",
   "playlist_add_check",
   "receipt_long",
+  "request_quote",
   "search",
   "search_off",
   "settings",
@@ -130,6 +131,7 @@ export const PackagePlus = make("add_box")
 export const PanelLeftIcon = make("left_panel_open")
 export const Pencil = make("edit")
 export const ScrollText = make("receipt_long")
+export const Invoice = make("request_quote")
 export const Search = make("search")
 export const SearchOff = make("search_off")
 export const Settings = make("settings")

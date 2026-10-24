@@ -13,6 +13,7 @@ export const staffNavItems: NavItem[] = [
   { href: "/app/orders", label: "Orders" },
   { href: "/app/warehouses", label: "Warehouses" },
   { href: "/app/clients", label: "Clients" },
+  { href: "/app/billing", label: "Invoices", permission: "billing.view" },
   { href: "/app/audit", label: "Audit log", permission: "audit.read" },
   { href: "/app/settings", label: "Settings" },
 ]
@@ -42,6 +43,8 @@ export const routeLabels: Record<string, string> = {
   activity: "Activity",
   users: "Users",
   audit: "Audit log",
+  billing: "Invoices",
+  sage: "Sage",
   settings: "Settings",
   profile: "Profile",
   "warehouse-layout": "Warehouse layout",
