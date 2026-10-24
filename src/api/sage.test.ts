@@ -39,6 +39,7 @@ import {
   getActiveAccountingSystem,
   getSageAccessToken,
   hasSageSession,
+  sageLineAmounts,
 } from "@/api/sage"
 import { sendInvoiceToSage } from "@/staff/features/billing/send-to-sage"
 import type { Invoice } from "@/api/invoices"
@@ -146,7 +147,17 @@ describe("sending an invoice to Sage", () => {
       reference: "WMS-INV-000007",
       date: "2026-11-01",
       due_date: "2026-11-15",
-      invoice_lines: [{ ledger_account_id: "L-1", quantity: 2, unit_price: 5, tax_rate_id: "GB_STANDARD" }],
+      invoice_lines: [
+        {
+          ledger_account_id: "L-1",
+          quantity: 2,
+          unit_price: 5,
+          tax_rate_id: "GB_STANDARD",
+          net_amount: 10,
+          tax_amount: 2, // Sage requires the VAT amount on each line
+          total_amount: 12,
+        },
+      ],
     })
     expect(backend.calls).toEqual(["start:inv-1", "issued:inv-1:S-1"])
     expect(issued).toMatchObject({ sageInvoiceNumber: "SI-1", sageLink: "https://sage/S-1" })
@@ -166,6 +177,17 @@ describe("sending an invoice to Sage", () => {
       stripeCustomerId: "cus_9",
     })
     expect(issued).toMatchObject({ grossTotal: 120, currency: "GBP", stripeCustomerId: "cus_9" })
+  })
+
+  it("works out each line's VAT to the penny for the rate", () => {
+    expect(sageLineAmounts(3, 33.33, "GB_STANDARD")).toEqual({
+      net_amount: 99.99,
+      tax_amount: 20,
+      total_amount: 119.99,
+    })
+    expect(sageLineAmounts(1, 1200, "GB_LOWER")).toEqual({ net_amount: 1200, tax_amount: 60, total_amount: 1260 })
+    expect(sageLineAmounts(2, 7.5, "GB_NO_TAX")).toEqual({ net_amount: 15, tax_amount: 0, total_amount: 15 })
+    expect(() => sageLineAmounts(1, 1, "XX")).toThrow(/Unknown VAT rate/)
   })
 
   it("never creates a second Sage invoice: an existing one with our reference is used instead", async () => {
