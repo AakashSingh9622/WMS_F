@@ -11,11 +11,31 @@ import { useAuditSearch } from "@/api/audit"
 import { DetailsStep, emptyDraft, type RegisterDraft } from "@/staff/features/boxes/register/details-step"
 import { LabelsStep } from "@/staff/features/boxes/register/labels-step"
 import { AllocateStep } from "@/staff/features/boxes/register/allocate-step"
+import { RegisterStepper, type RegisterStep } from "@/staff/features/boxes/register/register-stepper"
+import { RegisteredHero } from "@/staff/features/boxes/register/registered-hero"
 import { Button } from "@/components/ui/button"
-import type { Box } from "@/api/types"
+import type { Box, LocationPath } from "@/api/types"
 
 const DRAFT_KEY = "register-boxes-draft"
-type Step = "details" | "labels" | "allocate" | "done"
+// The batch being worked on: registered boxes, where each one was filed, whether labels were printed, finished. Kept
+// in sessionStorage so going back and forth — or refreshing — never loses progress (or registers the boxes twice).
+const SESSION_KEY = "register-boxes-session"
+
+interface RegisterSession {
+  boxes: Box[]
+  placed: Record<string, LocationPath>
+  printed: boolean
+  finished: boolean
+}
+const emptySession = (): RegisterSession => ({ boxes: [], placed: {}, printed: false, finished: false })
+
+function save(key: string, value: unknown) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // ignore (private mode / storage full) — the wizard still works for this page view
+  }
+}
 
 export function RegisterBoxesScreen() {
   const router = useRouter()
@@ -36,10 +56,9 @@ export function RegisterBoxesScreen() {
     expectedNewBoxes !== undefined && alreadyRegistered !== undefined
       ? Math.max(expectedNewBoxes - alreadyRegistered, 0)
       : undefined
-  const step = (searchParams.get("step") as Step) || "details"
+  const step = (searchParams.get("step") as RegisterStep) || "details"
   const [draft, setDraft] = useState<RegisterDraft>(emptyDraft)
-  const [createdBoxes, setCreatedBoxes] = useState<Box[]>([])
-  const [unallocatedCount, setUnallocatedCount] = useState(0)
+  const [session, setSession] = useState<RegisterSession>(emptySession)
 
   useEffect(() => {
     if (typeof sessionStorage === "undefined") return
@@ -47,6 +66,8 @@ export function RegisterBoxesScreen() {
       const raw = sessionStorage.getItem(DRAFT_KEY)
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time load from a browser-only store on mount
       if (raw) setDraft(JSON.parse(raw))
+      const saved = sessionStorage.getItem(SESSION_KEY)
+      if (saved) setSession({ ...emptySession(), ...JSON.parse(saved) })
     } catch {
       // ignore corrupt draft
     }
@@ -63,79 +84,76 @@ export function RegisterBoxesScreen() {
     const quantity = Math.min(200, remainingExpected)
     setDraft((d) => {
       const next = { ...d, quantity }
-      try {
-        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next))
-      } catch {
-        // ignore
-      }
+      save(DRAFT_KEY, next)
       return next
     })
   }, [orderId, remainingExpected])
 
   function updateDraft(next: RegisterDraft) {
     setDraft(next)
-    try {
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next))
-    } catch {
-      // ignore
-    }
+    save(DRAFT_KEY, next)
   }
 
-  function goToStep(next: Step) {
+  function updateSession(change: (s: RegisterSession) => RegisterSession) {
+    setSession((s) => {
+      const next = change(s)
+      save(SESSION_KEY, next)
+      return next
+    })
+  }
+
+  function goToStep(next: RegisterStep) {
     router.push(
       `/app/boxes/new?step=${next}${orderId ? `&orderId=${orderId}` : ""}${lockedClientId ? `&clientId=${lockedClientId}` : ""}`,
     )
   }
 
-  if (step === "done") {
-    return (
-      <div className="max-w-md space-y-4">
-        <h1 className="text-lg font-semibold">
-          {unallocatedCount > 0 ? `${createdBoxes.length} boxes registered` : "All boxes registered and allocated"}
-        </h1>
-        {unallocatedCount > 0 && (
-          <p className="text-muted-foreground text-sm">
-            {unallocatedCount} box{unallocatedCount === 1 ? "" : "es"} still need a slot — they&apos;ll show up on the
-            dashboard under unallocated boxes.
-          </p>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <Button nativeButton={false} render={<Link href="/app/boxes/new" />}>
-            Register more
-          </Button>
-          <Button
-            variant="outline"
-            nativeButton={false}
-            render={<Link href={`/app/clients/${draft.clientId}/boxes`} />}
-          >
-            View boxes
-          </Button>
-          {orderId && (
-            <Button variant="outline" nativeButton={false} render={<Link href={`/app/orders/${orderId}`} />}>
-              Back to order
-            </Button>
-          )}
-        </div>
-      </div>
-    )
+  /** A fresh batch: forget this one (its boxes stay registered) and start at step 1. */
+  function startOver() {
+    try {
+      sessionStorage.removeItem(SESSION_KEY)
+      sessionStorage.removeItem(DRAFT_KEY)
+    } catch {
+      // ignore
+    }
+    setSession(emptySession())
+    setDraft({ ...emptyDraft(), clientId: lockedClientId ?? "" })
+    goToStep("details")
   }
+
+  /** Wrap up the batch and show the summary (Finish, or automatically once the last box is filed). */
+  function finish() {
+    updateSession((s) => ({ ...s, finished: true }))
+    try {
+      sessionStorage.removeItem(DRAFT_KEY)
+    } catch {
+      // ignore
+    }
+    goToStep("done")
+  }
+
+  const hasBoxes = session.boxes.length > 0
+  const canOpen = (s: RegisterStep) =>
+    s === "details" || ((s === "labels" || s === "allocate") && hasBoxes) || (s === "done" && session.finished)
+  const unfiled = session.boxes.filter((b) => !session.placed[b.id]).length
 
   return (
     <div className="space-y-6">
-      <div className="space-y-3">
+      {step !== "done" && (
         <PageHeader
           icon={PackagePlus}
           title="Register boxes"
-          description="Add boxes, print their labels, then put them in a slot."
+          description="Add boxes, print their labels, then put them on a shelf."
+          actions={
+            hasBoxes ? (
+              <Button variant="ghost" size="sm" onClick={startOver}>
+                Start a new batch
+              </Button>
+            ) : undefined
+          }
         />
-        <nav className="text-muted-foreground flex gap-2 text-sm">
-          <span className={step === "details" ? "text-foreground font-medium" : ""}>1. Details</span>
-          <span>→</span>
-          <span className={step === "labels" ? "text-foreground font-medium" : ""}>2. Print labels</span>
-          <span>→</span>
-          <span className={step === "allocate" ? "text-foreground font-medium" : ""}>3. Allocate</span>
-        </nav>
-      </div>
+      )}
+      <RegisterStepper current={step} canOpen={canOpen} onOpen={goToStep} />
 
       {step === "details" && (
         <DetailsStep
@@ -149,34 +167,55 @@ export function RegisterBoxesScreen() {
               ? `${expectedNewBoxes} new box${expectedNewBoxes === 1 ? "" : "es"} expected on this order · ${alreadyRegistered} already registered${remainingExpected === 0 ? " — all expected boxes are in" : ""}`
               : undefined
           }
+          registered={session.boxes}
+          filedIds={new Set(Object.keys(session.placed))}
+          onStartOver={startOver}
           onCreated={(boxes) => {
-            setCreatedBoxes(boxes)
+            updateSession(() => ({ ...emptySession(), boxes }))
             goToStep("labels")
           }}
-        />
-      )}
-
-      {step === "labels" && createdBoxes.length > 0 && (
-        <LabelsStep boxes={createdBoxes} onContinue={() => goToStep("allocate")} />
-      )}
-
-      {step === "allocate" && createdBoxes.length > 0 && (
-        <AllocateStep
-          clientId={draft.clientId}
-          boxes={createdBoxes}
-          onFinish={(remaining) => {
-            setUnallocatedCount(remaining)
-            try {
-              sessionStorage.removeItem(DRAFT_KEY)
-            } catch {
-              // ignore
-            }
-            goToStep("done")
+          onSaved={(boxes, relabel) => {
+            updateSession((s) => ({ ...s, boxes, printed: s.printed && !relabel }))
+            if (relabel) goToStep("labels")
           }}
         />
       )}
 
-      {(step === "labels" || step === "allocate") && createdBoxes.length === 0 && (
+      {step === "labels" && hasBoxes && (
+        <LabelsStep
+          boxes={session.boxes}
+          printed={session.printed}
+          onPrinted={() => updateSession((s) => ({ ...s, printed: true }))}
+        />
+      )}
+
+      {step === "allocate" && hasBoxes && (
+        <AllocateStep
+          clientId={session.boxes[0].clientId}
+          boxes={session.boxes}
+          placed={session.placed}
+          onPlaced={(updated) => {
+            const placed = { ...session.placed }
+            for (const b of updated) if (b.locationPath) placed[b.id] = b.locationPath
+            updateSession((s) => ({ ...s, placed: { ...s.placed, ...placed } }))
+            // Nothing left to do on this step once the last box is on a shelf — straight to the summary.
+            if (session.boxes.every((b) => placed[b.id])) finish()
+          }}
+          onShowSummary={finish}
+        />
+      )}
+
+      {step === "done" && hasBoxes && (
+        <RegisteredHero
+          boxes={session.boxes}
+          placed={session.placed}
+          orderId={orderId}
+          onRegisterMore={startOver}
+          onFileRest={() => goToStep("allocate")}
+        />
+      )}
+
+      {step !== "details" && !hasBoxes && (
         <p className="text-muted-foreground text-sm">
           No boxes in this session yet —{" "}
           <Link href="/app/boxes/new" className="text-primary hover:underline">
@@ -184,6 +223,29 @@ export function RegisterBoxesScreen() {
           </Link>
           .
         </p>
+      )}
+
+      {/* Back / next for the steps after registering (step 1's own button registers the boxes). */}
+      {hasBoxes && step !== "done" && (
+        <div className="bg-background/95 sticky bottom-0 z-10 -mx-1 flex items-center justify-between gap-3 border-t px-1 py-3 backdrop-blur">
+          <Button
+            variant="outline"
+            disabled={step === "details"}
+            onClick={() => goToStep(step === "allocate" ? "labels" : "details")}
+          >
+            ← Back
+          </Button>
+          <span className="text-muted-foreground hidden text-sm sm:block">
+            {session.boxes.length} box{session.boxes.length === 1 ? "" : "es"} · {session.boxes.length - unfiled} filed
+          </span>
+          {step === "details" && <Button onClick={() => goToStep("labels")}>Next: print labels →</Button>}
+          {step === "labels" && <Button onClick={() => goToStep("allocate")}>Next: file boxes →</Button>}
+          {step === "allocate" && (
+            <Button variant={unfiled > 0 ? "outline" : "default"} onClick={finish}>
+              {unfiled > 0 ? `Finish (${unfiled} left to file later)` : "Finish →"}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   )

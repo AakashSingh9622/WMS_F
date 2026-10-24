@@ -2,17 +2,26 @@
 
 import Link from "next/link"
 import { useMemo, useState } from "react"
-import { Pencil } from "@/components/icons"
+import { Pencil, Printer } from "@/components/icons"
 import { toast } from "sonner"
 
 import { useCan } from "@/auth/useAuth"
 import { useBoxSearch } from "@/api/boxes"
-import { useRack, useRackRowStats, useRackSlots, useUpdateRack, useUpdateSlot } from "@/api/warehouses"
+import {
+  useRack,
+  useRackRowStats,
+  useRackSlots,
+  useUpdateRack,
+  useUpdateSlot,
+  useWarehouseLayout,
+} from "@/api/warehouses"
 import type { RackRowStats } from "@/api/warehouses"
 import type { Box, Rack, Slot } from "@/api/types"
 import { formatLength, toCentimetres, type LengthUnit } from "@/domain/dimensions"
 import { capacityLevel, capacityPercent } from "@/lib/capacity"
 import { LOCKED_SLOT_STATUSES, SLOT_LOCK_LABEL, isLockedSlot, type SlotLock } from "@/domain/status"
+import { shelfCode } from "@/domain/location"
+import { RackPlacementFields } from "@/staff/features/warehouses/manage-layout-dialog"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -40,8 +49,8 @@ const LEVEL_TEXT = {
 const HATCHED = "bg-[repeating-linear-gradient(45deg,var(--muted),var(--muted)_4px,transparent_4px,transparent_8px)]"
 
 // --- Row model -------------------------------------------------------------
-// A rack is rows × columns of cells; the page shows one line per ROW, adding up its cells
-// (e.g. 6 cells × 366 cm = 2,196 cm). Cells are not shown one by one any more.
+// A rack is rows × columns of cells; the page shows one line per ROW (= a shelf; its cells are the positions), adding
+// up its cells (e.g. 6 cells × 366 cm = 2,196 cm). Cells are not shown one by one any more.
 
 interface RackRow {
   row: number
@@ -144,15 +153,25 @@ function StatCard({ label, children }: { label: string; children: React.ReactNod
 
 function EditRackDialog({ rack, warehouseId }: { rack: Rack; warehouseId: string }) {
   const [open, setOpen] = useState(false)
+  const [label, setLabel] = useState(rack.label)
+  const [placement, setPlacement] = useState({ zoneId: rack.zoneId ?? "", aisleId: rack.aisleId ?? "" })
   const [cellLength, setCellLength] = useState(String(rack.cellLengthCm))
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>("cm")
   const updateRack = useUpdateRack()
+  const { data: layout } = useWarehouseLayout(open ? warehouseId : "")
 
   const lengthCm = Number(cellLength) > 0 ? toCentimetres(Number(cellLength), lengthUnit) : 0
 
   async function save() {
     try {
-      await updateRack.mutateAsync({ rackId: rack.id, warehouseId, cellLength: Number(cellLength), lengthUnit })
+      await updateRack.mutateAsync({
+        rackId: rack.id,
+        warehouseId,
+        label: label.trim(),
+        zoneId: placement.zoneId || null,
+        aisleId: placement.aisleId || null,
+        ...(lengthCm !== rack.cellLengthCm && { cellLength: Number(cellLength), lengthUnit }),
+      })
       toast.success("Rack updated")
       setOpen(false)
     } catch (err) {
@@ -166,6 +185,8 @@ function EditRackDialog({ rack, warehouseId }: { rack: Rack; warehouseId: string
       onOpenChange={(next) => {
         setOpen(next)
         if (next) {
+          setLabel(rack.label)
+          setPlacement({ zoneId: rack.zoneId ?? "", aisleId: rack.aisleId ?? "" })
           setCellLength(String(rack.cellLengthCm))
           setLengthUnit("cm")
         }
@@ -180,6 +201,16 @@ function EditRackDialog({ rack, warehouseId }: { rack: Rack; warehouseId: string
           <DialogTitle>Edit {rack.label}</DialogTitle>
         </DialogHeader>
         <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="edit-rack-label">Label</FieldLabel>
+            <Input id="edit-rack-label" value={label} onChange={(e) => setLabel(e.target.value)} />
+          </Field>
+          <RackPlacementFields
+            layout={layout}
+            zoneId={placement.zoneId}
+            aisleId={placement.aisleId}
+            onChange={setPlacement}
+          />
           <Field>
             <FieldLabel htmlFor="edit-cell-length">Length of one cell</FieldLabel>
             <div className="flex gap-2">
@@ -213,7 +244,7 @@ function EditRackDialog({ rack, warehouseId }: { rack: Rack; warehouseId: string
           </Field>
         </FieldGroup>
         <DialogFooter>
-          <Button onClick={save} disabled={lengthCm <= 0 || updateRack.isPending}>
+          <Button onClick={save} disabled={lengthCm <= 0 || !label.trim() || updateRack.isPending}>
             {updateRack.isPending ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>
@@ -231,6 +262,7 @@ const STATE_BADGE: Record<RackRow["state"], { label: string; className: string }
 
 function SelectedRowPanel({
   row,
+  rackCode,
   boxes,
   canManageLayout,
   loadingBoxes,
@@ -238,6 +270,7 @@ function SelectedRowPanel({
   togglePending,
 }: {
   row: RackRow
+  rackCode: string
   boxes: Box[]
   canManageLayout: boolean
   loadingBoxes: boolean
@@ -254,8 +287,9 @@ function SelectedRowPanel({
       <CardContent className="flex h-full flex-col gap-5">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-muted-foreground text-xs">Selected row</p>
-            <h2 className="text-xl font-semibold">Row {row.row}</h2>
+            <p className="text-muted-foreground text-xs">Selected shelf</p>
+            <h2 className="text-xl font-semibold">Shelf {row.row}</h2>
+            <p className="text-muted-foreground font-mono text-xs">Code {shelfCode(rackCode, row.row)}</p>
           </div>
           <Badge variant="secondary" className={cn("rounded-full", badge.className)}>
             {badge.label}
@@ -300,7 +334,7 @@ function SelectedRowPanel({
             <Skeleton className="h-16 w-full" />
           ) : boxes.length === 0 ? (
             <div className="text-muted-foreground rounded-md border border-dashed p-3 text-xs">
-              No boxes stored on this row yet.
+              No boxes stored on this shelf yet.
             </div>
           ) : (
             <ul className="max-h-56 divide-y overflow-y-auto rounded-md border text-sm">
@@ -320,14 +354,14 @@ function SelectedRowPanel({
           {canManageLayout && (
             <>
               <p className="text-muted-foreground text-xs">
-                Row state — locked rows take no new boxes; boxes inside stay
+                Shelf state — locked shelves take no new boxes; boxes inside stay
               </p>
               <Select
                 value={lockValue}
                 disabled={togglePending}
                 onValueChange={(v) => v && v !== "mixed" && onSetLock(v as SlotLock | "active")}
               >
-                <SelectTrigger className="w-full" aria-label="Row state">
+                <SelectTrigger className="w-full" aria-label="Shelf state">
                   <SelectValue
                     getLabel={(v) =>
                       v === "active" ? "Active" : v === "mixed" ? "Mixed" : SLOT_LOCK_LABEL[v as SlotLock]
@@ -396,10 +430,12 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
           ),
       )
       toast.success(
-        lock === "active" ? `Row ${row.row} is active again` : `Row ${row.row}: ${SLOT_LOCK_LABEL[lock].toLowerCase()}`,
+        lock === "active"
+          ? `Shelf ${row.row} is active again`
+          : `Shelf ${row.row}: ${SLOT_LOCK_LABEL[lock].toLowerCase()}`,
       )
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't update the row")
+      toast.error(err instanceof Error ? err.message : "Couldn't update the shelf")
     }
   }
 
@@ -413,13 +449,28 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
             <h1 className="text-2xl font-semibold tracking-tight">{rack?.label}</h1>
             {rack && (
               <p className="text-muted-foreground text-sm tabular-nums">
-                {rack.rows} rows × {rack.columns} columns · {fmt(rack.totalCapacity)} cm total capacity · each cell{" "}
-                {formatLength(rack.cellLengthCm)}
+                {rack.zone && <>Zone {rack.zone.code} · </>}
+                {rack.aisle && <>Aisle {rack.aisle.code} · </>}
+                {!rack.zone && !rack.aisle && <>No zone or aisle · </>}
+                Code <span className="font-mono">{rack.code}</span> · {rack.rows} shelves × {rack.columns} positions ·{" "}
+                {fmt(rack.totalCapacity)} cm total capacity · each cell {formatLength(rack.cellLengthCm)}
               </p>
             )}
           </div>
         )}
-        {canManageLayout && rack && <EditRackDialog rack={rack} warehouseId={warehouseId} />}
+        <div className="flex gap-2">
+          {rack && (
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href={`/print/location-labels?rackId=${rack.id}`} target="_blank" />}
+            >
+              <Printer className="size-4" aria-hidden />
+              Print labels
+            </Button>
+          )}
+          {canManageLayout && rack && <EditRackDialog rack={rack} warehouseId={warehouseId} />}
+        </div>
       </div>
 
       {isError && <p className="text-destructive text-sm">Couldn&apos;t load this rack. Try refreshing.</p>}
@@ -448,7 +499,7 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
             <span className="text-muted-foreground text-sm">cm</span>
           </p>
         </StatCard>
-        <StatCard label="Rows in use">
+        <StatCard label="Shelves in use">
           <p className="flex items-baseline gap-2">
             <span className="text-3xl font-semibold tabular-nums">{rowsInUse}</span>
             <span className="text-muted-foreground text-sm">of {rows.length}</span>
@@ -465,7 +516,7 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
         <Card className="[--card-spacing:--spacing(5)] lg:col-span-2">
           <CardContent className="flex h-full flex-col gap-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-base font-semibold">Rows</h2>
+              <h2 className="text-base font-semibold">Shelves</h2>
               <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                 <span className="flex items-center gap-1.5">
                   <span className="border-status-hold size-3 rounded-sm border" /> Full
@@ -495,7 +546,7 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
                 ))}
               </div>
             ) : (
-              <ul className="flex flex-1 flex-col gap-3" aria-label="Rack rows">
+              <ul className="flex flex-1 flex-col gap-3" aria-label="Shelves">
                 {rows.map((row) => {
                   const selected = row.row === selectedRow?.row
                   const percent = capacityPercent(row.used, row.capacity)
@@ -506,7 +557,7 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
                         type="button"
                         onClick={() => setSelectedRowNumber(row.row)}
                         aria-pressed={selected}
-                        aria-label={`Row ${row.row}, ${percent}% full, ${row.used} of ${row.capacity} cm used`}
+                        aria-label={`Shelf ${row.row}, ${percent}% full, ${row.used} of ${row.capacity} cm used`}
                         className={cn(
                           "focus-visible:ring-ring grid min-h-20 w-full grid-cols-[7rem_1fr_9rem] items-center gap-6 rounded-xl border px-5 py-4 text-left transition-colors outline-none focus-visible:ring-2",
                           selected ? "border-primary ring-primary/30 ring-2" : "hover:border-primary/40",
@@ -516,7 +567,7 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
                       >
                         <span>
                           <span className="flex items-center gap-1.5 font-semibold">
-                            Row {row.row}
+                            Shelf {row.row}
                             {row.onOrder && <span className="bg-status-reserved size-1.5 rounded-full" />}
                           </span>
                           <span className="text-muted-foreground font-mono text-xs tabular-nums">
@@ -548,6 +599,7 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
           <SelectedRowPanel
             key={selectedRow.row}
             row={selectedRow}
+            rackCode={rack?.code ?? ""}
             boxes={rowBoxes?.items ?? []}
             canManageLayout={canManageLayout}
             loadingBoxes={loadingBoxes}

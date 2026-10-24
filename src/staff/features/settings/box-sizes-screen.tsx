@@ -5,93 +5,307 @@ import { PageHeader } from "@/components/page-header"
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { ApiError } from "@/api/client"
-import { useBoxSizeSettings, useUpdateBoxSizes } from "@/api/settings"
-import { formatLength } from "@/domain/dimensions"
+import { useBoxSizeSettings, useCreateBoxSize, useDeleteBoxSize, useUpdateBoxSize } from "@/api/settings"
+import type { BoxSizeType } from "@/api/types"
+import { useCan } from "@/auth/useAuth"
+import { formatLength, toCentimetres, type LengthUnit } from "@/domain/dimensions"
 import { formatDateTime } from "@/lib/formatting"
-import type { BoxSize } from "@/api/types"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-const ROWS: { size: BoxSize; label: string }[] = [
-  { size: "standard", label: "Standard box" },
-  { size: "large", label: "Large box" },
-]
+const MAX_CM = 1000
 
-export function BoxSizesScreen() {
-  const { data, isLoading } = useBoxSizeSettings()
-  const update = useUpdateBoxSizes()
-  // What the admin typed per size; a size that was not touched shows the saved value.
-  const [draft, setDraft] = useState<Partial<Record<BoxSize, string>>>({})
+function onError(err: unknown) {
+  toast.error(err instanceof Error ? err.message : "That didn't work")
+}
 
-  const valueOf = (size: BoxSize) => draft[size] ?? String(data?.sizes[size] ?? "")
-  const numberOf = (size: BoxSize) => Number(valueOf(size))
-  const isValid = (size: BoxSize) => Number.isInteger(numberOf(size)) && numberOf(size) >= 1 && numberOf(size) <= 1000
-  const valid = ROWS.every(({ size }) => isValid(size))
-  const changed = ROWS.some(({ size }) => data && numberOf(size) !== data.sizes[size])
+/** Length typed in cm or feet -> whole cm, or null when it isn't a usable length. */
+function lengthOf(value: string, unit: LengthUnit): number | null {
+  const n = Number(value)
+  if (!(n > 0)) return null
+  const cm = toCentimetres(n, unit)
+  return cm >= 1 && cm <= MAX_CM ? cm : null
+}
 
-  async function save() {
-    try {
-      await update.mutateAsync({ standard: numberOf("standard"), large: numberOf("large") })
-      setDraft({})
-      toast.success("Box sizes saved")
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Could not save the box sizes")
-    }
+function LengthInput({
+  id,
+  value,
+  unit,
+  onValue,
+  onUnit,
+}: {
+  id: string
+  value: string
+  unit: LengthUnit
+  onValue: (v: string) => void
+  onUnit: (u: LengthUnit) => void
+}) {
+  return (
+    <div className="flex gap-2">
+      <Input
+        id={id}
+        type="number"
+        min={0}
+        step="any"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onValue(e.target.value)}
+      />
+      <Select value={unit} onValueChange={(v) => onUnit((v as LengthUnit) ?? "cm")}>
+        <SelectTrigger className="w-24" aria-label="Length unit">
+          <SelectValue getLabel={(v) => (v === "ft" ? "feet" : "cm")} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="cm">cm</SelectItem>
+          <SelectItem value="ft">feet</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function AddSizeCard() {
+  const [name, setName] = useState("")
+  const [length, setLength] = useState("")
+  const [unit, setUnit] = useState<LengthUnit>("cm")
+  const create = useCreateBoxSize()
+  const cm = lengthOf(length, unit)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Add a size</CardTitle>
+        <CardDescription>A name staff pick when registering boxes, and the shelf space one box takes.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!cm) return
+            create.mutate(
+              { name, lengthCm: cm },
+              {
+                onSuccess: (s) => {
+                  toast.success(`${s.name} added`)
+                  setName("")
+                  setLength("")
+                },
+                onError,
+              },
+            )
+          }}
+        >
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="new-size-name">Name</FieldLabel>
+              <Input
+                id="new-size-name"
+                value={name}
+                maxLength={40}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Archive XL"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="new-size-length">Shelf length of one box</FieldLabel>
+              <LengthInput id="new-size-length" value={length} unit={unit} onValue={setLength} onUnit={setUnit} />
+              <FieldDescription>
+                {cm
+                  ? `= ${formatLength(cm)} of a rack cell`
+                  : `The side of the box along the shelf — up to ${MAX_CM} cm.`}
+              </FieldDescription>
+            </Field>
+            <Button type="submit" disabled={!name.trim() || !cm || create.isPending}>
+              {create.isPending ? "Adding…" : "Add size"}
+            </Button>
+          </FieldGroup>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SizeRow({ size, canManage }: { size: BoxSizeType; canManage: boolean }) {
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(size.name)
+  const [length, setLength] = useState(String(size.lengthCm))
+  const [unit, setUnit] = useState<LengthUnit>("cm")
+  const update = useUpdateBoxSize()
+  const remove = useDeleteBoxSize()
+  const cm = lengthOf(length, unit)
+  const removable = !size.builtIn && size.boxCount === 0
+
+  if (editing) {
+    return (
+      <TableRow>
+        <TableCell>
+          <Input aria-label="Size name" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
+        </TableCell>
+        <TableCell colSpan={3}>
+          <div className="max-w-xs space-y-1">
+            <LengthInput id={`len-${size.code}`} value={length} unit={unit} onValue={setLength} onUnit={setUnit} />
+            <p className="text-muted-foreground text-xs">
+              {cm ? formatLength(cm) : `1–${MAX_CM} cm`}
+              {size.boxCount > 0 && " · boxes already registered keep their length"}
+            </p>
+          </div>
+        </TableCell>
+        <TableCell className="text-right whitespace-nowrap">
+          <Button
+            size="sm"
+            disabled={!name.trim() || !cm || update.isPending}
+            onClick={() =>
+              update.mutate(
+                { code: size.code, name, lengthCm: cm ?? undefined },
+                {
+                  onSuccess: () => {
+                    toast.success("Size saved")
+                    setEditing(false)
+                  },
+                  onError,
+                },
+              )
+            }
+          >
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+        </TableCell>
+      </TableRow>
+    )
   }
 
   return (
-    <div className="max-w-md space-y-6">
+    <TableRow className={size.active ? "" : "text-muted-foreground"}>
+      <TableCell className="font-medium">
+        {size.name}
+        {size.builtIn && <span className="text-muted-foreground ml-2 text-xs font-normal">built in</span>}
+      </TableCell>
+      <TableCell className="tabular-nums">{formatLength(size.lengthCm)}</TableCell>
+      <TableCell className="tabular-nums">{size.boxCount.toLocaleString("en-GB")}</TableCell>
+      <TableCell>
+        <Badge variant={size.active ? "secondary" : "outline"}>{size.active ? "In use" : "Retired"}</Badge>
+      </TableCell>
+      <TableCell className="text-right whitespace-nowrap">
+        {canManage && (
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setName(size.name)
+                setLength(String(size.lengthCm))
+                setUnit("cm")
+                setEditing(true)
+              }}
+            >
+              Edit
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={update.isPending}
+              onClick={() =>
+                update.mutate(
+                  { code: size.code, active: !size.active },
+                  {
+                    onSuccess: () =>
+                      toast.success(
+                        size.active ? `${size.name} retired — not offered for new boxes` : `${size.name} back in use`,
+                      ),
+                    onError,
+                  },
+                )
+              }
+            >
+              {size.active ? "Retire" : "Bring back"}
+            </Button>
+            {removable && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                disabled={remove.isPending}
+                onClick={() =>
+                  remove.mutate(size.code, { onSuccess: () => toast.success(`${size.name} removed`), onError })
+                }
+              >
+                Remove
+              </Button>
+            )}
+          </>
+        )}
+      </TableCell>
+    </TableRow>
+  )
+}
+
+/**
+ * Settings → Box sizes (Sprint 11). Standard and Large are built in; admins add their own sizes (a name and the shelf
+ * length one box takes). A size in use can be renamed, resized (only boxes registered afterwards take the new length)
+ * or retired — removed only when no box has it.
+ */
+export function BoxSizesScreen() {
+  const { data, isLoading } = useBoxSizeSettings()
+  const canManage = useCan("settings.manage")
+
+  return (
+    <div className="space-y-6">
       <PageHeader
         icon={PackagePlus}
         title="Box sizes"
-        description="How much space (in cm) one box takes in a rack cell. Used for slot capacity and for suggesting where to put boxes."
+        description="The sizes staff choose from when registering boxes, and how much shelf space each one takes."
       />
 
-      {isLoading || !data ? (
-        <Skeleton className="h-32 w-full" />
-      ) : (
-        <>
-          <FieldGroup>
-            {ROWS.map(({ size, label }) => (
-              <Field key={size}>
-                <FieldLabel htmlFor={`size-${size}`}>{label} (cm)</FieldLabel>
-                <Input
-                  id={`size-${size}`}
-                  type="number"
-                  min={1}
-                  max={1000}
-                  step={1}
-                  inputMode="numeric"
-                  value={valueOf(size)}
-                  onChange={(e) => setDraft((d) => ({ ...d, [size]: e.target.value }))}
-                />
-                <FieldDescription>
-                  {isValid(size) ? formatLength(numberOf(size)) : "Whole cm, 1–1000"} · default {data.defaults[size]} cm
-                </FieldDescription>
-              </Field>
-            ))}
-          </FieldGroup>
-
-          <p className="text-muted-foreground text-xs">
-            A new length applies to boxes registered from now on. Boxes already registered keep the length they were
-            stored with, so slot capacity stays correct.
-          </p>
-
-          <div className="flex items-center gap-3">
-            <Button onClick={save} disabled={!valid || !changed || update.isPending}>
-              {update.isPending ? "Saving…" : "Save"}
-            </Button>
-            {data.updatedAt && data.updatedBy && (
-              <span className="text-muted-foreground text-xs">
-                Last changed by {data.updatedBy.name} on {formatDateTime(data.updatedAt)}
-              </span>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Sizes</CardTitle>
+            <CardDescription>
+              The length is the side of the box along the shelf; it decides how many boxes fit in a rack cell. A new
+              length applies to boxes registered from then on — boxes already on a shelf keep theirs, so capacity stays
+              right. Retired sizes stay on the boxes that have them but aren&apos;t offered for new ones.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading || !data ? (
+              <Skeleton className="h-40 w-full" />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Shelf length</TableHead>
+                    <TableHead>Boxes</TableHead>
+                    <TableHead>State</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.items.map((s) => (
+                    <SizeRow key={s.code} size={s} canManage={canManage} />
+                  ))}
+                </TableBody>
+              </Table>
             )}
-          </div>
-        </>
-      )}
+            {data?.updatedAt && data.updatedBy && (
+              <p className="text-muted-foreground mt-3 text-xs">
+                Last changed by {data.updatedBy.name} on {formatDateTime(data.updatedAt)}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {canManage && <AddSizeCard />}
+      </div>
     </div>
   )
 }

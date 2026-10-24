@@ -7,7 +7,8 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { useCan } from "@/auth/useAuth"
-import { useCreateRack, useWarehouse, useWarehouseRacks } from "@/api/warehouses"
+import { useCreateRack, useWarehouse, useWarehouseLayout } from "@/api/warehouses"
+import type { Rack, WarehouseLayout } from "@/api/types"
 import { CapacityBar } from "@/components/capacity-bar"
 import { capacityLevel } from "@/lib/capacity"
 import { formatLength, toCentimetres, type LengthUnit } from "@/domain/dimensions"
@@ -19,12 +20,13 @@ import { Input } from "@/components/ui/input"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { ManageLayoutDialog, RackPlacementFields } from "@/staff/features/warehouses/manage-layout-dialog"
 
 function onError(err: unknown) {
   toast.error(err instanceof Error ? err.message : "That didn't work")
 }
 
-function AddRackDialog({ warehouseId }: { warehouseId: string }) {
+function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: WarehouseLayout }) {
   const [open, setOpen] = useState(false)
   const [code, setCode] = useState("")
   const [label, setLabel] = useState("")
@@ -32,6 +34,7 @@ function AddRackDialog({ warehouseId }: { warehouseId: string }) {
   const [columns, setColumns] = useState("6")
   const [cellLength, setCellLength] = useState("")
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>("ft")
+  const [placement, setPlacement] = useState({ zoneId: "", aisleId: "" })
   const createRack = useCreateRack()
 
   const lengthCm = Number(cellLength) > 0 ? toCentimetres(Number(cellLength), lengthUnit) : 0
@@ -47,6 +50,8 @@ function AddRackDialog({ warehouseId }: { warehouseId: string }) {
         columns: Number(columns) || 1,
         cellLength: Number(cellLength),
         lengthUnit,
+        zoneId: placement.zoneId || undefined,
+        aisleId: placement.aisleId || undefined,
       })
       toast.success("Rack added")
       setOpen(false)
@@ -69,17 +74,26 @@ function AddRackDialog({ warehouseId }: { warehouseId: string }) {
           <Field>
             <FieldLabel htmlFor="rack-code">Code</FieldLabel>
             <Input id="rack-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="A01" />
+            <p className="text-muted-foreground text-xs">
+              Unique across all warehouses — staff type it to find a shelf, e.g. {code.trim() || "A01"}-2.
+            </p>
           </Field>
           <Field>
             <FieldLabel htmlFor="rack-label">Label</FieldLabel>
             <Input id="rack-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Rack A-01" />
           </Field>
+          <RackPlacementFields
+            layout={layout}
+            zoneId={placement.zoneId}
+            aisleId={placement.aisleId}
+            onChange={setPlacement}
+          />
           <Field>
-            <FieldLabel htmlFor="rack-rows">Rows</FieldLabel>
+            <FieldLabel htmlFor="rack-rows">Shelves (rows)</FieldLabel>
             <Input id="rack-rows" type="number" min={1} value={rows} onChange={(e) => setRows(e.target.value)} />
           </Field>
           <Field>
-            <FieldLabel htmlFor="rack-columns">Columns</FieldLabel>
+            <FieldLabel htmlFor="rack-columns">Positions per shelf (columns)</FieldLabel>
             <Input
               id="rack-columns"
               type="number"
@@ -135,12 +149,86 @@ function AddRackDialog({ warehouseId }: { warehouseId: string }) {
   )
 }
 
+function RackCards({ racks, warehouseId }: { racks: Rack[]; warehouseId: string }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {racks.map((rack) => {
+        const level = capacityLevel(rack.usedCapacity, rack.totalCapacity)
+        return (
+          <Link key={rack.id} href={`/app/warehouses/${warehouseId}/racks/${rack.id}`}>
+            <Card className="hover:border-primary/50 transition-colors">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  {rack.label}
+                  {level === "critical" && (
+                    <Badge variant="outline" className="border-status-hold text-status-hold">
+                      Full
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CapacityBar used={rack.usedCapacity} total={rack.totalCapacity} />
+              </CardContent>
+            </Card>
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
+
+interface Group {
+  key: string
+  title: string
+  name?: string
+  used?: number
+  total?: number
+  racks: Rack[]
+  depth: 0 | 1
+}
+
+/**
+ * Racks grouped zone → aisle (aisles without a zone after the zones, racks with neither last). With no zones or aisles
+ * at all it is just one list, as before.
+ */
+function groupRacks(layout: WarehouseLayout): Group[] {
+  const groups: Group[] = []
+  const aisleGroup = (a: WarehouseLayout["aisles"][number], depth: 0 | 1): Group => ({
+    key: a.id,
+    title: `Aisle ${a.code}`,
+    name: a.name,
+    used: a.usedCapacity,
+    total: a.totalCapacity,
+    racks: layout.racks.filter((r) => r.aisleId === a.id),
+    depth,
+  })
+  for (const z of layout.zones) {
+    groups.push({
+      key: z.id,
+      title: `Zone ${z.code}`,
+      name: z.name,
+      used: z.usedCapacity,
+      total: z.totalCapacity,
+      racks: layout.racks.filter((r) => r.zoneId === z.id && !r.aisleId),
+      depth: 0,
+    })
+    for (const a of layout.aisles.filter((x) => x.zoneId === z.id)) groups.push(aisleGroup(a, 1))
+  }
+  for (const a of layout.aisles.filter((x) => !x.zoneId)) groups.push(aisleGroup(a, 0))
+  const loose = layout.racks.filter((r) => !r.zoneId && !r.aisleId)
+  if (loose.length) groups.push({ key: "none", title: "No zone or aisle", racks: loose, depth: 0 })
+  return groups
+}
+
 export function WarehouseOverviewScreen({ warehouseId }: { warehouseId: string }) {
   const canManageLayout = useCan("layout.manage")
   const { data: warehouse, isLoading: loadingWarehouse } = useWarehouse(warehouseId)
-  const { data: racks, isLoading: loadingRacks, isError } = useWarehouseRacks(warehouseId)
+  const { data: layout, isLoading: loadingRacks, isError } = useWarehouseLayout(warehouseId)
+  const racks = layout?.racks
 
   const criticalRacks = racks?.filter((r) => capacityLevel(r.usedCapacity, r.totalCapacity) === "critical") ?? []
+  const grouped = layout && (layout.zones.length > 0 || layout.aisles.length > 0)
 
   return (
     <div className="space-y-6">
@@ -151,7 +239,14 @@ export function WarehouseOverviewScreen({ warehouseId }: { warehouseId: string }
           icon={MapPin}
           title={`${warehouse?.code} — ${warehouse?.name}`}
           description={warehouse?.address}
-          actions={canManageLayout ? <AddRackDialog warehouseId={warehouseId} /> : undefined}
+          actions={
+            canManageLayout ? (
+              <div className="flex gap-2">
+                <ManageLayoutDialog warehouseId={warehouseId} layout={layout} />
+                <AddRackDialog warehouseId={warehouseId} layout={layout} />
+              </div>
+            ) : undefined
+          }
         />
       )}
 
@@ -184,32 +279,29 @@ export function WarehouseOverviewScreen({ warehouseId }: { warehouseId: string }
         </p>
       )}
 
-      {racks && racks.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {racks.map((rack) => {
-            const level = capacityLevel(rack.usedCapacity, rack.totalCapacity)
-            return (
-              <Link key={rack.id} href={`/app/warehouses/${warehouseId}/racks/${rack.id}`}>
-                <Card className="hover:border-primary/50 transition-colors">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center justify-between text-sm">
-                      {rack.label}
-                      {level === "critical" && (
-                        <Badge variant="outline" className="border-status-hold text-status-hold">
-                          Full
-                        </Badge>
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <CapacityBar used={rack.usedCapacity} total={rack.totalCapacity} />
-                  </CardContent>
-                </Card>
-              </Link>
-            )
-          })}
-        </div>
-      )}
+      {racks && racks.length > 0 && !grouped && <RackCards racks={racks} warehouseId={warehouseId} />}
+
+      {grouped &&
+        groupRacks(layout).map((g) => (
+          <section key={g.key} className={g.depth === 1 ? "space-y-3 border-l pl-4" : "space-y-3"}>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className={g.depth === 1 ? "text-sm font-semibold" : "text-base font-semibold"}>
+                {g.title}
+                {g.name && <span className="text-muted-foreground ml-2 font-normal">{g.name}</span>}
+              </h2>
+              {g.total ? (
+                <div className="w-56">
+                  <CapacityBar used={g.used ?? 0} total={g.total} />
+                </div>
+              ) : null}
+            </div>
+            {g.racks.length > 0 ? (
+              <RackCards racks={g.racks} warehouseId={warehouseId} />
+            ) : g.title.startsWith("Aisle") ? (
+              <p className="text-muted-foreground text-xs">No racks in this aisle yet.</p>
+            ) : null}
+          </section>
+        ))}
     </div>
   )
 }

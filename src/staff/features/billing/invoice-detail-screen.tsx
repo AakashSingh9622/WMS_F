@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { toast } from "sonner"
@@ -12,7 +13,7 @@ import {
   useSageSettings,
   type Invoice as InvoiceData,
 } from "@/api/invoices"
-import { SAGE_TAX_RATES } from "@/api/sage"
+import { SAGE_NOT_ACTIVE, SAGE_TAX_RATES, SageError } from "@/api/sage"
 import { useStripePayments } from "@/api/stripe"
 import { useCan } from "@/auth/useAuth"
 import {
@@ -33,12 +34,24 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { InvoiceForm } from "@/staff/features/billing/invoice-form"
 import { InvoiceStatusBadge } from "@/staff/features/billing/invoice-status-badge"
-import { SageConnectionBar, useSageConnection, useSageLedgerAccounts } from "@/staff/features/billing/sage-connection"
+import { RecordInvoicePaymentDialog } from "@/staff/features/billing/record-invoice-payment"
+import { AccountingSystemDialog } from "@/staff/features/billing/accounting-system-dialog"
+import {
+  SageConnectionBar,
+  useActiveAccountingSystem,
+  useSageConnection,
+  useSageLedgerAccounts,
+} from "@/staff/features/billing/sage-connection"
 import { SEND_STEP_LABEL, sendInvoiceToSage, type SendStep } from "@/staff/features/billing/send-to-sage"
 
 function SendToSagePanel({ invoice }: { invoice: InvoiceData }) {
+  // 1. the practice's active accounting system decides everything below: not Sage One → no connecting, no sending
+  const accounting = useActiveAccountingSystem()
+  const sageActive = accounting.data === "SageOne"
+  const [notActiveOpen, setNotActiveOpen] = useState(false)
   const connection = useSageConnection()
-  const ledgers = useSageLedgerAccounts(connection.connected)
+  const ledgers = useSageLedgerAccounts(connection.connected && sageActive)
+  // (send() re-checks the accounting system itself — this cached answer only decides what the panel shows)
   const { data: settings } = useSageSettings()
   const { data: clients } = useGetClientsWithDetailsQuery()
   const { data: addresses } = useGetClientAddressesQuery(invoice.clientId)
@@ -52,6 +65,12 @@ function SendToSagePanel({ invoice }: { invoice: InvoiceData }) {
     (id === settings?.defaultLedgerAccountId ? settings.defaultLedgerAccountName : null) ??
     id
   const projectId = projectIdOf(clients?.find((c) => c.ClientId === invoice.clientId))
+  // An order's invoice: the client's Stripe customer (DocuSoft card) lets the customer pay it by card in the portal.
+  const { data: card } = useGetClientCardQuery(
+    { projectId: projectId ?? 0, clientId: invoice.clientId },
+    { skip: !projectId || !invoice.orderId },
+  )
+  const stripeCustomerId = String(card?.Table1?.[0]?.StripeCustomerId ?? "").trim() || undefined
   const address = addresses?.[0]
   const sendingNow = invoice.status === "sending"
 
@@ -68,6 +87,7 @@ function SendToSagePanel({ invoice }: { invoice: InvoiceData }) {
           city: address.Town,
           postcode: address.Postcode,
         },
+        stripeCustomerId,
         onStep: setStep,
       })
       refresh(issued)
@@ -75,7 +95,13 @@ function SendToSagePanel({ invoice }: { invoice: InvoiceData }) {
       if (warning) toast.warning(warning)
     } catch (err) {
       refresh()
-      toast.error(err instanceof Error ? err.message : "Sending to Sage failed")
+      if (err instanceof SageError && err.code === SAGE_NOT_ACTIVE) {
+        // switched away from Sage One since the page loaded — nothing was sent
+        void accounting.refetch()
+        setNotActiveOpen(true)
+      } else {
+        toast.error(err instanceof Error ? err.message : "Sending to Sage failed")
+      }
     } finally {
       setStep(null)
     }
@@ -87,8 +113,35 @@ function SendToSagePanel({ invoice }: { invoice: InvoiceData }) {
         <CardTitle className="text-sm">Send to Sage One</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <SageConnectionBar connection={connection} />
-        {connection.connected && (
+        <AccountingSystemDialog open={notActiveOpen} onOpenChange={setNotActiveOpen} />
+        {accounting.isPending ? (
+          <p className="text-muted-foreground text-sm">Checking the practice&apos;s accounting system…</p>
+        ) : accounting.isError ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-destructive text-sm">
+              Could not check the practice&apos;s accounting system: {accounting.error.message}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => accounting.refetch()}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <>
+            <SageConnectionBar
+              connection={connection}
+              onConnect={sageActive ? undefined : () => setNotActiveOpen(true)}
+            />
+            {!sageActive && (
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={() => setNotActiveOpen(true)}>Send to Sage</Button>
+                <span className="text-muted-foreground text-sm">
+                  Sage One is not the practice&apos;s active accounting system.
+                </span>
+              </div>
+            )}
+          </>
+        )}
+        {connection.connected && sageActive && (
           <>
             <Field>
               <FieldLabel htmlFor="send-ledger">Ledger account for the lines</FieldLabel>
@@ -223,7 +276,20 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
       <PageHeader
         icon={Invoice}
         title={invoice.invoiceNumber}
-        description={`${invoice.clientName} · ${invoice.periodFrom ? formatDateRange(invoice.periodFrom, invoice.periodTo) : "no period"}`}
+        description={
+          invoice.orderId ? (
+            <>
+              {invoice.clientName} · for{" "}
+              <Link href={`/app/orders/${invoice.orderId}`} className="text-primary hover:underline">
+                the order
+              </Link>{" "}
+              at its billing stage
+              {invoice.grossTotal !== undefined && ` · to pay ${formatMoney(invoice.grossTotal)} incl. VAT`}
+            </>
+          ) : (
+            `${invoice.clientName} · ${invoice.periodFrom ? formatDateRange(invoice.periodFrom, invoice.periodTo) : "no period"}`
+          )
+        }
         actions={
           canManage && isDraft ? (
             <div className="flex gap-2">
@@ -274,6 +340,50 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
               >
                 Open in Sage
               </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {invoice.status === "issued" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between gap-2 text-sm">
+              Payments
+              {invoice.paidAt ? (
+                <Badge>Paid</Badge>
+              ) : (
+                <Badge variant="outline">{formatMoney(invoice.outstanding ?? 0)} owed</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p>
+              <span className="text-muted-foreground">Total</span>{" "}
+              <span className="tabular-nums">{formatMoney(invoice.grossTotal ?? invoice.netTotal)}</span>
+              <span className="text-muted-foreground"> · paid</span>{" "}
+              <span className="tabular-nums">{formatMoney(invoice.amountPaid ?? 0)}</span>
+              {invoice.sageSyncedAt && (
+                <span className="text-muted-foreground"> · checked in Sage {formatDateTime(invoice.sageSyncedAt)}</span>
+              )}
+            </p>
+            {invoice.payments?.map((p, i) => (
+              <p key={i} className="text-muted-foreground text-xs">
+                {formatDateTime(p.at)} · {formatMoney(p.amount)} · {p.method.replace("_", " ")}
+                {p.via === "portal"
+                  ? " (portal card)"
+                  : p.via === "sage"
+                    ? " (seen in Sage)"
+                    : ` (recorded by ${p.by.name})`}
+                {p.reference ? ` · ref ${p.reference}` : ""}
+              </p>
+            ))}
+            {canManage && !invoice.paidAt && (invoice.outstanding ?? 0) > 0 && (
+              <RecordInvoicePaymentDialog
+                invoiceId={invoice.id}
+                invoiceNumber={invoice.invoiceNumber}
+                outstanding={invoice.outstanding ?? 0}
+              />
             )}
           </CardContent>
         </Card>

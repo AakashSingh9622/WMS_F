@@ -8,11 +8,13 @@ import { useOrder, useOrderLines } from "@/api/orders"
 import { useCan } from "@/auth/useAuth"
 import { useAuditSearch } from "@/api/audit"
 import { OrderActions } from "@/staff/features/orders/order-actions"
+import { OrderBillingCard } from "@/staff/features/orders/order-billing-card"
 import { OrderTypeLabel } from "@/components/order-type-icon"
 import { OrderStatusBadge } from "@/components/status-badge"
 import { StatusStepper } from "@/components/status-stepper"
 import { AuditTimeline } from "@/components/audit-timeline"
-import { LocationPath } from "@/components/location-path"
+import { StoredLocation } from "@/components/location-path"
+import { locationText } from "@/domain/location"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,9 +24,6 @@ const PRINT_DOCS: Record<string, { label: string; href: (id: string) => string }
   destruction: { label: "Certificate of destruction", href: (id) => `/print/destruction-certificate/${id}` },
 }
 
-const pathText = (l: { warehouse: string; rack: string; slot: string }) =>
-  `${l.warehouse} › Rack ${l.rack} › Slot ${l.slot}`
-
 // Where to find the box: its CURRENT slot while the line is still open (it may have been moved after the order was
 // made); the slot it was taken from once the line is done. A moved box also shows where it was when added.
 function LineLocation({ line }: { line: OrderLine }) {
@@ -32,14 +31,15 @@ function LineLocation({ line }: { line: OrderLine }) {
   const shown = open ? (line.currentLocation ?? line.fromLocation) : (line.fromLocation ?? line.currentLocation)
   if (!shown) return <span className="text-muted-foreground">—</span>
   const moved =
-    open && line.fromLocation && line.currentLocation && pathText(line.fromLocation) !== pathText(line.currentLocation)
+    open &&
+    line.fromLocation &&
+    line.currentLocation &&
+    locationText(line.fromLocation) !== locationText(line.currentLocation)
   return (
     <div className="space-y-0.5">
-      <LocationPath
-        segments={[{ label: shown.warehouse }, { label: `Rack ${shown.rack}` }, { label: `Slot ${shown.slot}` }]}
-      />
+      <StoredLocation path={shown} />
       {moved && line.fromLocation && (
-        <p className="text-muted-foreground text-xs">Moved since added (was {pathText(line.fromLocation)})</p>
+        <p className="text-muted-foreground text-xs">Moved since added (was {locationText(line.fromLocation)})</p>
       )}
     </div>
   )
@@ -70,7 +70,11 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
             {order.clientName}
           </Link>
         </p>
-        <StatusStepper status={order.status} heldFrom={order.heldFromStatus} />
+        <StatusStepper
+          status={order.status}
+          heldFrom={order.heldFromStatus}
+          withoutBilling={!order.billing && order.status !== "requested"}
+        />
         {order.status === "on_hold" && order.holdReason && (
           <p className="text-status-hold text-sm">On hold: {order.holdReason}</p>
         )}
@@ -151,6 +155,7 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
         </div>
 
         <div className="space-y-4">
+          <OrderBillingCard order={order} />
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">Details</CardTitle>

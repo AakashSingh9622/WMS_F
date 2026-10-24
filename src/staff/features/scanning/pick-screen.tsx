@@ -3,6 +3,7 @@
 import Link from "next/link"
 
 import { usePickBox, usePickList } from "@/api/orders"
+import { locationText } from "@/domain/location"
 import { OrderStatusBadge } from "@/components/status-badge"
 import { ScanInput, ScanLog, useScanLog } from "@/components/scan-input"
 import { Badge } from "@/components/ui/badge"
@@ -88,9 +89,7 @@ export function PickScreen({ orderId }: { orderId: string }) {
               {lines.map((l, i) => (
                 <TableRow key={l.lineId} className={l.lineStatus === "pending" ? "" : "text-muted-foreground"}>
                   <TableCell className="tabular-nums">{i + 1}</TableCell>
-                  <TableCell>
-                    {l.location ? `${l.location.warehouse} › ${l.location.rack} › ${l.location.slot}` : "—"}
-                  </TableCell>
+                  <TableCell>{l.location ? locationText(l.location) : "—"}</TableCell>
                   <TableCell className="font-mono text-xs">{l.slotBarcode ?? "—"}</TableCell>
                   <TableCell className="font-mono text-xs">{l.barcode ?? l.boxNumber}</TableCell>
                   <TableCell className="max-w-56 truncate">{l.description}</TableCell>

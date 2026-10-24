@@ -259,7 +259,7 @@ export function BoxActions({ box }: { box: Box }) {
             size="sm"
             disabled={markPrinted.isPending}
             onClick={() => {
-              window.open(`/print/labels?boxIds=${box.id}`, "_blank")
+              window.open(`/print/labels?boxIds=${box.id}&autoprint=1`, "_blank")
               markPrinted.mutate([box.id], { onError })
             }}
           >
@@ -328,7 +328,7 @@ export function BoxActions({ box }: { box: Box }) {
           pending={relabel.isPending}
           onSubmit={async (reason) => {
             const updated = await relabel.mutateAsync({ boxId: box.id, reason })
-            window.open(`/print/labels?boxIds=${updated.id}`, "_blank")
+            window.open(`/print/labels?boxIds=${updated.id}&autoprint=1`, "_blank")
             toast.success(`New barcode ${updated.barcode}`)
           }}
         />

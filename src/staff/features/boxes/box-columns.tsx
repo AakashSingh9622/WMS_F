@@ -1,7 +1,7 @@
 import type { ColumnDef } from "@/components/data-table"
 import { formatDateRange } from "@/lib/formatting"
 import { BoxStatusBadge } from "@/components/status-badge"
-import { LocationPath } from "@/components/location-path"
+import { StoredLocation } from "@/components/location-path"
 import type { Box } from "@/api/types"
 
 export const boxColumns: ColumnDef<Box, unknown>[] = [
@@ -19,14 +19,7 @@ export const boxColumns: ColumnDef<Box, unknown>[] = [
     header: "Location",
     cell: ({ row }) =>
       row.original.locationPath ? (
-        <LocationPath
-          className="text-sm"
-          segments={[
-            { label: row.original.locationPath.warehouse },
-            { label: `Rack ${row.original.locationPath.rack}` },
-            { label: `Slot ${row.original.locationPath.slot}` },
-          ]}
-        />
+        <StoredLocation className="text-sm" path={row.original.locationPath} />
       ) : (
         <span className="text-muted-foreground text-sm">—</span>
       ),

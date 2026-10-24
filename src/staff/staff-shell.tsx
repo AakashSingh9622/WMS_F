@@ -24,6 +24,7 @@ import { useAuth } from "@/auth/useAuth"
 import { staffNavItems } from "@/domain/navigation"
 import { can } from "@/domain/permissions"
 import { UserMenu } from "@/components/user-menu"
+import { ScanBoxButton } from "@/staff/features/scanning/scan-box-dialog"
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs"
 import {
   Sidebar,
@@ -114,7 +115,10 @@ export function StaffShell({ children }: { children: ReactNode }) {
               <span className="font-semibold">WMS Staff</span>
               <PageBreadcrumbs />
             </div>
-            <UserMenu />
+            <div className="flex items-center gap-2">
+              <ScanBoxButton />
+              <UserMenu />
+            </div>
           </header>
           {/* Fixed to the screen: the top bar never scrolls away. Pages with a table fill this area (h-full) and
               scroll inside the table; other pages simply scroll here. */}

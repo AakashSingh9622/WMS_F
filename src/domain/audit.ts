@@ -1,4 +1,5 @@
 import type { AuditEvent } from "@/api/types"
+import { locationText } from "@/domain/location"
 
 export interface DescribedAuditEvent {
   /** The leading word/phrase, meant to render bold (spec §5 examples all lead with a bold verb). */
@@ -7,10 +8,7 @@ export interface DescribedAuditEvent {
   text: string
 }
 
-function locationLabel(loc: AuditEvent["fromLocation"]): string {
-  if (!loc) return ""
-  return `${loc.warehouse} › Rack ${loc.rack} › Slot ${loc.slot}`
-}
+const locationLabel = (loc: AuditEvent["fromLocation"]): string => locationText(loc)
 
 /**
  * Builds the one-sentence description of an audit event (spec §5). Staff see full detail

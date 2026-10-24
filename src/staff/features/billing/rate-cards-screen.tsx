@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { SAGE_TAX_RATES } from "@/api/sage"
 import { RATE_LABEL, rateKeys, useCreateRateCard, useRateCards, type RateCard, type Rates } from "@/api/billing"
 import { useCan } from "@/auth/useAuth"
+import { useBoxSizeName, useBoxSizes } from "@/api/settings"
 import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 import { formatDate, formatMoney, todayISO } from "@/lib/formatting"
 import { Invoice } from "@/components/icons"
@@ -19,20 +20,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 
 const DEFAULT_CLIENT = "__default__"
-type PriceForm = Record<"storageStandard" | "storageLarge" | (typeof rateKeys)[number], string>
+type PriceForm = Record<(typeof rateKeys)[number], string>
 
 function toForm(rates?: Rates): PriceForm {
-  const form = {
-    storageStandard: String(rates?.storagePerBoxMonth.standard ?? ""),
-    storageLarge: String(rates?.storagePerBoxMonth.large ?? ""),
-  } as PriceForm
+  const form = {} as PriceForm
   for (const k of rateKeys) form[k] = String(rates?.[k] ?? "")
   return form
 }
 
-function toRates(form: PriceForm): Rates {
-  const n = (v: string) => Number(v || 0)
-  const rates = { storagePerBoxMonth: { standard: n(form.storageStandard), large: n(form.storageLarge) } } as Rates
+const n = (v: string) => Number(v || 0)
+
+/** Storage is priced per box size (Sprint 11: every size in Settings → Box sizes); `storage` = price typed per code. */
+function toRates(form: PriceForm, storage: Record<string, string>, previous?: Rates): Rates {
+  const storagePerBoxMonth = { ...previous?.storagePerBoxMonth } // keeps prices of retired sizes not shown
+  for (const [code, v] of Object.entries(storage)) storagePerBoxMonth[code] = n(v)
+  const rates = { storagePerBoxMonth } as Rates
   for (const k of rateKeys) rates[k] = n(form[k])
   return rates
 }
@@ -45,11 +47,18 @@ function RateCardDialog({ from, label }: { from?: RateCard; label: string }) {
   const [taxRateId, setTaxRateId] = useState(from?.taxRateId ?? "GB_STANDARD")
   const [notes, setNotes] = useState("")
   const [form, setForm] = useState<PriceForm>(() => toForm(from?.rates))
+  const [storageTyped, setStorageTyped] = useState<Record<string, string>>({})
+  // sizes in use, plus retired ones this card already prices
+  const sizes = useBoxSizes().filter((s) => s.active || from?.rates.storagePerBoxMonth[s.code] !== undefined)
+  const storageValue = (code: string) => storageTyped[code] ?? String(from?.rates.storagePerBoxMonth[code] ?? "")
+  const storage = Object.fromEntries(sizes.map((s) => [s.code, storageValue(s.code)]))
   const create = useCreateRateCard()
   const { data: clients } = useGetClientsWithDetailsQuery()
   const clientName = (id: string) =>
     id === DEFAULT_CLIENT ? "Default (all clients)" : (clients?.find((c) => c.ClientId === id)?.Client ?? id)
-  const pricesOk = Object.values(form).every((v) => v === "" || (!Number.isNaN(Number(v)) && Number(v) >= 0))
+  const pricesOk = [...Object.values(form), ...Object.values(storage)].every(
+    (v) => v === "" || (!Number.isNaN(Number(v)) && Number(v) >= 0),
+  )
 
   const price = (key: keyof PriceForm, text: string) => (
     <Field key={key}>
@@ -72,7 +81,7 @@ function RateCardDialog({ from, label }: { from?: RateCard; label: string }) {
         clientId: isDefault ? undefined : clientId,
         clientName: isDefault ? undefined : clientName(clientId),
         effectiveFrom,
-        rates: toRates(form),
+        rates: toRates(form, storage, from?.rates),
         taxRateId,
         notes: notes.trim() || undefined,
       })
@@ -122,11 +131,28 @@ function RateCardDialog({ from, label }: { from?: RateCard; label: string }) {
               />
             </Field>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {price("storageStandard", "Storage, standard box / month")}
-            {price("storageLarge", "Storage, large box / month")}
-            {rateKeys.map((k) => price(k, RATE_LABEL[k]))}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Storage per box / month, by size</p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {sizes.map((s) => (
+                <Field key={s.code}>
+                  <FieldLabel htmlFor={`rc-storage-${s.code}`}>
+                    {s.name}
+                    {!s.active && " (retired)"}
+                  </FieldLabel>
+                  <Input
+                    id={`rc-storage-${s.code}`}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={storageValue(s.code)}
+                    onChange={(e) => setStorageTyped({ ...storageTyped, [s.code]: e.target.value })}
+                  />
+                </Field>
+              ))}
+            </div>
           </div>
+          <div className="grid gap-4 sm:grid-cols-3">{rateKeys.map((k) => price(k, RATE_LABEL[k]))}</div>
           <FieldDescription>
             Prices in £, before VAT. Storage is charged by the day: a box kept 15 days pays half a month.
           </FieldDescription>
@@ -164,6 +190,9 @@ function RateCardDialog({ from, label }: { from?: RateCard; label: string }) {
 
 function CardView({ card, canManage }: { card: RateCard; canManage: boolean }) {
   const live = !card.effectiveTo || card.effectiveTo >= todayISO()
+  const sizeName = useBoxSizeName()
+  // sizes in use that this card has no storage price for (charged 0 until a new card prices them)
+  const unpriced = useBoxSizes().filter((s) => s.active && card.rates.storagePerBoxMonth[s.code] === undefined)
   return (
     <div className={`bg-card space-y-3 rounded-2xl border p-4 ${live ? "" : "opacity-60"}`}>
       <div className="flex flex-wrap items-center gap-2">
@@ -181,14 +210,12 @@ function CardView({ card, canManage }: { card: RateCard; canManage: boolean }) {
         )}
       </div>
       <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <div className="flex justify-between gap-2">
-          <dt className="text-muted-foreground">Storage standard / month</dt>
-          <dd className="tabular-nums">{formatMoney(card.rates.storagePerBoxMonth.standard)}</dd>
-        </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-muted-foreground">Storage large / month</dt>
-          <dd className="tabular-nums">{formatMoney(card.rates.storagePerBoxMonth.large)}</dd>
-        </div>
+        {Object.entries(card.rates.storagePerBoxMonth).map(([code, amount]) => (
+          <div key={code} className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">Storage {sizeName(code)} / month</dt>
+            <dd className="tabular-nums">{formatMoney(amount)}</dd>
+          </div>
+        ))}
         {rateKeys.map((k) => (
           <div key={k} className="flex justify-between gap-2">
             <dt className="text-muted-foreground">{RATE_LABEL[k]}</dt>
@@ -196,6 +223,12 @@ function CardView({ card, canManage }: { card: RateCard; canManage: boolean }) {
           </div>
         ))}
       </dl>
+      {live && unpriced.length > 0 && (
+        <p className="text-status-hold text-xs">
+          No storage price for {unpriced.map((s) => s.name).join(", ")} — those boxes are stored free until a new card
+          prices them{canManage ? " (Change prices)" : ""}.
+        </p>
+      )}
       {card.notes && <p className="text-muted-foreground text-xs">{card.notes}</p>}
     </div>
   )

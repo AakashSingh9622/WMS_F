@@ -38,7 +38,8 @@ export const userSchema = z.object({
 })
 export type User = z.infer<typeof userSchema>
 
-// --- Locations: Warehouse -> Rack -> Slot ---------------------------------
+// --- Locations: Warehouse -> (Zone -> Aisle, optional) -> Rack -> Slot -----
+// Shelf = a rack's row, position = the cell (slot). Zones and aisles are optional labels on the rack (Sprint 10).
 
 export const warehouseSchema = z.object({
   id: z.string(),
@@ -52,18 +53,47 @@ export const warehouseSchema = z.object({
 })
 export type Warehouse = z.infer<typeof warehouseSchema>
 
-export const rackSchema = z.object({
+const layoutLevelSchema = z.object({
   id: z.string(),
   warehouseId: z.string(),
   code: z.string(),
+  name: z.string().optional(),
+})
+
+export const zoneSchema = layoutLevelSchema.extend({
+  rackCount: z.number().optional(),
+  usedCapacity: z.number().optional(),
+  totalCapacity: z.number().optional(),
+})
+export type Zone = z.infer<typeof zoneSchema>
+
+// An aisle sits in a zone or straight in the warehouse.
+export const aisleSchema = zoneSchema.extend({ zoneId: z.string().optional() })
+export type Aisle = z.infer<typeof aisleSchema>
+
+export const rackSchema = z.object({
+  id: z.string(),
+  warehouseId: z.string(),
+  zoneId: z.string().optional(),
+  aisleId: z.string().optional(),
+  code: z.string(),
   label: z.string(),
-  rows: z.number(),
-  columns: z.number(),
+  rows: z.number(), // shelves
+  columns: z.number(), // positions per shelf
   cellLengthCm: z.number(), // length of one cell (row × column), in centimetres
   usedCapacity: z.number(),
   totalCapacity: z.number(),
+  zone: layoutLevelSchema.optional(), // only on GET /racks/:id
+  aisle: layoutLevelSchema.extend({ zoneId: z.string().optional() }).optional(),
 })
 export type Rack = z.infer<typeof rackSchema>
+
+export const warehouseLayoutSchema = z.object({
+  zones: z.array(zoneSchema),
+  aisles: z.array(aisleSchema),
+  racks: z.array(rackSchema),
+})
+export type WarehouseLayout = z.infer<typeof warehouseLayoutSchema>
 
 // available / full = an active cell; blocked / quarantined / inactive = locked (no new boxes, the ones inside stay).
 export const slotStatusSchema = z.enum(["available", "full", "blocked", "quarantined", "inactive"])
@@ -83,12 +113,60 @@ export const slotSchema = z.object({
 })
 export type Slot = z.infer<typeof slotSchema>
 
+// Stored snapshot (codes). Older rows only have warehouse / rack / slot — see domain/location.ts for display.
 export const locationPathSchema = z.object({
   warehouse: z.string(),
+  zone: z.string().optional(),
+  aisle: z.string().optional(),
   rack: z.string(),
   slot: z.string(),
+  shelf: z.number().optional(),
+  position: z.number().optional(),
 })
 export type LocationPath = z.infer<typeof locationPathSchema>
+
+// A rack found by code or name (search-as-you-type, and the choices when a name / code matches several racks).
+export const rackMatchSchema = z.object({
+  rackId: z.string(),
+  rackCode: z.string(),
+  rackLabel: z.string(),
+  warehouseId: z.string(),
+  warehouseCode: z.string(),
+  warehouseName: z.string(),
+  zone: z.string().optional(),
+  aisle: z.string().optional(),
+  rows: z.number().optional(),
+  columns: z.number().optional(),
+})
+export type RackMatch = z.infer<typeof rackMatchSchema>
+
+// GET /locations/resolve — "B04-3" (shelf), "B04-3-2" (position), a slot barcode, or just "B04"; the rack part may be
+// the rack's code or its name ("Rack A-01 3").
+const resolvedLocationSchema = z.object({
+  kind: z.enum(["position", "shelf", "rack"]),
+  code: z.string(),
+  warehouse: z.object({ id: z.string(), code: z.string(), name: z.string() }),
+  zone: layoutLevelSchema.nullable(),
+  aisle: layoutLevelSchema.extend({ zoneId: z.string().optional() }).nullable(),
+  rack: rackSchema.omit({ usedCapacity: true, totalCapacity: true }),
+  shelf: z.number().nullable(),
+  positions: z.array(slotSchema),
+  suggestedSlotId: z.string().nullable(),
+  locationPath: locationPathSchema.nullable(),
+})
+export const locationLookupSchema = z.discriminatedUnion("kind", [
+  resolvedLocationSchema.extend({ kind: z.literal("position") }),
+  resolvedLocationSchema.extend({ kind: z.literal("shelf") }),
+  resolvedLocationSchema.extend({ kind: z.literal("rack") }),
+  z.object({
+    kind: z.literal("ambiguous"),
+    code: z.string(),
+    message: z.string(),
+    choices: z.array(rackMatchSchema),
+  }),
+  z.object({ kind: z.literal("not_found"), code: z.string(), message: z.string(), suggestions: z.array(z.string()) }),
+])
+export type LocationLookup = z.infer<typeof locationLookupSchema>
 
 // --- Boxes ------------------------------------------------------------------
 
@@ -109,15 +187,27 @@ export const boxStatusSchema = z.enum([
 ])
 export type BoxStatus = z.infer<typeof boxStatusSchema>
 
-export const boxSizeSchema = z.enum(["standard", "large"])
+// A box size code: "standard", "large" or one an admin added in Settings → Box sizes (Sprint 11), e.g. "archive-xl".
+export const boxSizeSchema = z.string()
 export type BoxSize = z.infer<typeof boxSizeSchema>
+
+export const boxSizeTypeSchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  lengthCm: z.number(), // shelf space one box takes in a rack cell
+  active: z.boolean(), // false = retired: shown on old boxes, not offered for new ones
+  builtIn: z.boolean(), // standard / large: can be renamed or retired, not removed
+  boxCount: z.number(),
+})
+export type BoxSizeType = z.infer<typeof boxSizeTypeSchema>
 
 export const orderTypeSchema = z.enum(["collection", "dispatch", "destruction", "digitize"])
 export type OrderType = z.infer<typeof orderTypeSchema>
 
 export const orderStatusSchema = z.enum([
   "requested",
-  "approved",
+  "approved", // before the billing stage existed (old orders only)
+  "billing", // approved; waiting for the invoice to be paid (or billing waived) before scheduling
   "scheduled",
   "in_progress",
   "ready", // every box picked — waiting to be dispatched / destroyed
@@ -227,6 +317,46 @@ export type OrderCollection = z.infer<typeof orderCollectionSchema>
 export const orderLineSummarySchema = z.record(orderLineStatusSchema, z.number())
 export type OrderLineSummary = z.infer<typeof orderLineSummarySchema>
 
+// Billing stage: awaiting_invoice → invoice_draft → awaiting_payment → paid, or (payment not required — billed on
+// account) → awaiting_acknowledgement → acknowledged; or waived. See the backend's orderBillingService.js.
+export const orderBillingStatusSchema = z.enum([
+  "awaiting_invoice",
+  "invoice_draft",
+  "awaiting_payment",
+  "awaiting_acknowledgement",
+  "paid",
+  "acknowledged",
+  "waived",
+])
+export type OrderBillingStatus = z.infer<typeof orderBillingStatusSchema>
+export const orderBillingSchema = z.object({
+  status: orderBillingStatusSchema,
+  paymentNotRequired: z.boolean().optional(), // billed on account: the client only acknowledges the invoice
+  invoiceId: z.string().optional(),
+  invoiceNumber: z.string().optional(),
+  sageInvoiceNumber: z.string().optional(),
+  amount: z.number().optional(), // what the customer pays: Sage's total incl. VAT
+  currency: z.string().optional(),
+  stripeCustomerId: z.string().optional(),
+  payment: z
+    .object({
+      method: z.enum(["card", "bank_transfer", "other"]),
+      amount: z.number(),
+      currency: z.string().optional(),
+      reference: z.string().optional(),
+      note: z.string().optional(),
+      via: z.enum(["portal", "staff", "sage"]),
+      by: actorSchema,
+      at: z.string(),
+    })
+    .optional(),
+  acknowledged: z
+    .object({ by: actorSchema, at: z.string(), via: z.enum(["portal", "staff"]), note: z.string().optional() })
+    .optional(),
+  waived: z.object({ reason: z.string(), by: actorSchema, at: z.string() }).optional(),
+})
+export type OrderBilling = z.infer<typeof orderBillingSchema>
+
 export const orderSchema = z.object({
   id: z.string(),
   orderNumber: z.string(),
@@ -256,6 +386,7 @@ export const orderSchema = z.object({
   clientApprovalRequired: z.boolean().optional(),
   clientApprovedBy: z.string().optional(),
   clientApprovedAt: z.string().optional(),
+  billing: orderBillingSchema.optional(),
   delivery: z
     .object({
       recipientName: z.string().optional(),

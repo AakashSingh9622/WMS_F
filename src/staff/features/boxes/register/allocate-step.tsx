@@ -1,43 +1,48 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { toast } from "sonner"
 
 import { useAllocateBoxes, useSuggestSlots } from "@/api/boxes"
-import { useWarehouses, useWarehouseRacks, useRackSlots } from "@/api/warehouses"
-import { SlotGrid, SlotGridLegend } from "@/components/slot-grid"
-import { LocationPath } from "@/components/location-path"
-import { CapacityBar } from "@/components/capacity-bar"
-import { Card, CardContent } from "@/components/ui/card"
+import { StoredLocation } from "@/components/location-path"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { boxLengthCm } from "@/domain/dimensions"
-import type { Box, Slot } from "@/api/types"
+import { ChooseLocation } from "@/staff/features/warehouses/choose-location"
+import { boxLengthCm, formatLength } from "@/domain/dimensions"
+import { locationText } from "@/domain/location"
+import type { Box, LocationPath, Slot } from "@/api/types"
+import { cn } from "@/lib/utils"
+
+const lengthOf = (b: Box) => b.lengthCm ?? boxLengthCm(b.size) // cm
 
 function unitsFor(boxes: Box[]): number {
-  return boxes.reduce((sum, b) => sum + (b.lengthCm ?? boxLengthCm(b.size)), 0) // total length in cm
+  return boxes.reduce((sum, b) => sum + lengthOf(b), 0) // total length in cm
 }
 
+/**
+ * Step 3: put the boxes on shelves — a suggestion for the whole batch, or a position by code / browsing (fills what
+ * fits). What is already placed lives in the wizard (`placed`), so going back to the labels and returning keeps it.
+ */
 export function AllocateStep({
   clientId,
   boxes,
-  onFinish,
+  placed,
+  onPlaced,
+  onShowSummary,
 }: {
   clientId: string
   boxes: Box[]
-  onFinish: (unallocatedCount: number) => void
+  placed: Record<string, LocationPath>
+  /** Called after each placement; the wizard moves to the summary by itself once the last box is filed. */
+  onPlaced: (boxes: Box[]) => void
+  onShowSummary: () => void
 }) {
-  const [remaining, setRemaining] = useState<Box[]>(boxes)
-  const [warehouseId, setWarehouseId] = useState("")
-  const [rackId, setRackId] = useState("")
+  const remaining = boxes.filter((b) => !placed[b.id])
+  const filedCount = boxes.length - remaining.length
 
   const suggestSlots = useSuggestSlots()
   const allocate = useAllocateBoxes()
-  const { data: warehouses } = useWarehouses()
-  const { data: racks } = useWarehouseRacks(warehouseId)
-  const { data: slots } = useRackSlots(rackId)
-  const selectedRack = racks?.find((r) => r.id === rackId)
 
   useEffect(() => {
     if (remaining.length === 0) return
@@ -49,26 +54,24 @@ export function AllocateStep({
     const taken: Box[] = []
     let used = 0
     for (const box of remaining) {
-      const units = box.lengthCm ?? boxLengthCm(box.size) // cm
-      if (used + units > free) continue
+      if (used + lengthOf(box) > free) continue
       taken.push(box)
-      used += units
+      used += lengthOf(box)
     }
     return taken
   }
 
   async function runAllocation(toPlace: Box[], slotId: string) {
     if (toPlace.length === 0) {
-      toast.error("That slot doesn't have room for any remaining box")
+      toast.error("That position doesn't have room for any remaining box")
       return
     }
     try {
-      await allocate.mutateAsync({ allocations: toPlace.map((b) => ({ boxId: b.id, slotId })) })
-      const placedIds = new Set(toPlace.map((b) => b.id))
-      setRemaining((prev) => prev.filter((b) => !placedIds.has(b.id)))
-      toast.success(`${toPlace.length} box${toPlace.length === 1 ? "" : "es"} allocated`)
+      const updated = await allocate.mutateAsync({ allocations: toPlace.map((b) => ({ boxId: b.id, slotId })) })
+      onPlaced(updated)
+      toast.success(`${toPlace.length} box${toPlace.length === 1 ? "" : "es"} filed`)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't allocate")
+      toast.error(err instanceof Error ? err.message : "Couldn't file the boxes")
     }
   }
 
@@ -77,132 +80,125 @@ export function AllocateStep({
     void runAllocation(remaining, slotId)
   }
 
-  /** Manual grid click: the slot may only fit part of the remaining batch — fill what fits. */
+  /** A position picked by code or in the grid: it may only fit part of the remaining batch — fill what fits. */
   function handleSlotClick(slot: Slot) {
-    const free = slot.capacity - slot.used
-    void runAllocation(takeForCapacity(free), slot.id)
+    return runAllocation(takeForCapacity(slot.capacity - slot.used), slot.id)
   }
 
+  const percent = boxes.length ? Math.round((filedCount / boxes.length) * 100) : 0
+
   return (
-    <div className="space-y-6">
-      <p className="text-muted-foreground text-sm tabular-nums">
-        {remaining.length} of {boxes.length} box{boxes.length === 1 ? "" : "es"} left to allocate ({unitsFor(remaining)}{" "}
-        cm)
-      </p>
-
-      {remaining.length === 0 ? (
-        <Card>
-          <CardContent className="text-status-stored pt-6 text-sm">All boxes allocated.</CardContent>
-        </Card>
-      ) : (
-        <>
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold">Suggested slots</h2>
-            {suggestSlots.isPending && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Skeleton className="h-24" />
-                <Skeleton className="h-24" />
-              </div>
-            )}
-            {!suggestSlots.isPending && (suggestSlots.data?.length ?? 0) === 0 && (
-              <p className="text-muted-foreground text-sm">
-                No single slot fits all {remaining.length} remaining boxes — browse manually below.
+    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="min-w-0 space-y-6">
+        {remaining.length === 0 ? (
+          // Only seen when coming back to this step: filing the last box goes straight to the summary.
+          <Card>
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+              <p className="text-status-stored text-sm">
+                All {boxes.length} box{boxes.length === 1 ? " is" : "es are"} on a shelf.
               </p>
-            )}
-            <div className="grid gap-3 sm:grid-cols-2">
-              {suggestSlots.data?.map((s) => (
-                <Card key={s.slotId}>
-                  <CardContent className="space-y-2 pt-6">
-                    <LocationPath
-                      segments={[
-                        { label: s.locationPath.warehouse },
-                        { label: `Rack ${s.locationPath.rack}` },
-                        { label: `Slot ${s.locationPath.slot}` },
-                      ]}
-                    />
-                    <p className="text-muted-foreground text-xs">{s.freeCapacity} cm free after placement</p>
-                    <ul className="text-muted-foreground list-inside list-disc text-xs">
-                      {s.reasons.map((r) => (
-                        <li key={r}>{r}</li>
-                      ))}
-                    </ul>
-                    <Button size="sm" disabled={allocate.isPending} onClick={() => placeSuggestion(s.slotId)}>
-                      Use this slot
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold">Or browse manually</h2>
-            <div className="flex gap-3">
-              <Select
-                value={warehouseId}
-                onValueChange={(v) => {
-                  setWarehouseId(v ?? "")
-                  setRackId("")
-                }}
-              >
-                <SelectTrigger className="w-56">
-                  <SelectValue
-                    placeholder="Warehouse"
-                    getLabel={(id) => {
-                      const w = warehouses?.find((w) => w.id === id)
-                      return w ? `${w.code} — ${w.name}` : id
-                    }}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses?.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>
-                      {w.code} — {w.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {warehouseId && (
-                <Select value={rackId} onValueChange={(v) => setRackId(v ?? "")}>
-                  <SelectTrigger className="w-56">
-                    <SelectValue placeholder="Rack" getLabel={(id) => racks?.find((r) => r.id === id)?.label ?? id} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {racks?.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
-            {selectedRack && slots && (
-              <div className="space-y-2">
-                <div className="max-w-xs">
-                  <CapacityBar used={selectedRack.usedCapacity} total={selectedRack.totalCapacity} />
+              <Button size="sm" onClick={onShowSummary}>
+                See the summary →
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold">Suggested positions for all {remaining.length}</h2>
+              {suggestSlots.isPending && (
+                <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                  <Skeleton className="h-32" />
+                  <Skeleton className="h-32" />
+                  <Skeleton className="h-32" />
                 </div>
-                <SlotGrid
-                  rows={selectedRack.rows}
-                  columns={selectedRack.columns}
-                  slots={slots}
-                  onSelectSlot={handleSlotClick}
-                />
-                <SlotGridLegend />
+              )}
+              {!suggestSlots.isPending && (suggestSlots.data?.length ?? 0) === 0 && (
+                <p className="text-muted-foreground text-sm">
+                  No single position fits all {remaining.length} remaining boxes — type a shelf code or browse below.
+                </p>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                {suggestSlots.data?.map((s, i) => (
+                  <Card key={s.slotId} className={cn(i === 0 && "border-[#b93c2e]/40")}>
+                    <CardContent className="flex h-full flex-col gap-2 pt-6">
+                      {i === 0 && (
+                        <span className="w-fit rounded-full bg-[#b93c2e]/10 px-2 py-0.5 text-[11px] font-semibold text-[#b93c2e]">
+                          Best match
+                        </span>
+                      )}
+                      <StoredLocation path={s.locationPath} className="text-sm font-medium" />
+                      <p className="text-muted-foreground text-xs">{s.freeCapacity} cm free after placement</p>
+                      <ul className="text-muted-foreground list-inside list-disc text-xs">
+                        {s.reasons.map((r) => (
+                          <li key={r}>{r}</li>
+                        ))}
+                      </ul>
+                      <Button
+                        size="sm"
+                        className="mt-auto w-fit"
+                        disabled={allocate.isPending}
+                        onClick={() => placeSuggestion(s.slotId)}
+                      >
+                        Use this position
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </section>
+
+            <Card>
+              <CardContent className="pt-6">
+                <ChooseLocation needCm={unitsFor(remaining)} disabled={allocate.isPending} onPick={handleSlotClick} />
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </div>
+
+      <aside className="space-y-4 xl:sticky xl:top-0">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Progress</CardTitle>
+            <CardDescription>
+              {filedCount} of {boxes.length} filed · {formatLength(unitsFor(remaining))} still to place
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-muted h-2 overflow-hidden rounded-full">
+              <div className="bg-status-stored h-full rounded-full transition-all" style={{ width: `${percent}%` }} />
+            </div>
+            {remaining.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-muted-foreground text-xs">Waiting</p>
+                <div className="flex max-h-40 flex-wrap gap-1 overflow-y-auto">
+                  {remaining.map((b) => (
+                    <span key={b.id} className="bg-muted rounded-md px-2 py-0.5 font-mono text-xs">
+                      {b.boxNumber}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
-          </section>
-        </>
-      )}
-
-      <Button
-        type="button"
-        variant={remaining.length > 0 ? "outline" : "default"}
-        onClick={() => onFinish(remaining.length)}
-      >
-        {remaining.length > 0 ? `Finish (${remaining.length} left unallocated)` : "Finish"}
-      </Button>
+            {filedCount > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-muted-foreground text-xs">Filed</p>
+                <ul className="max-h-56 space-y-1 overflow-y-auto text-xs">
+                  {boxes
+                    .filter((b) => placed[b.id])
+                    .map((b) => (
+                      <li key={b.id} className="flex justify-between gap-2">
+                        <span className="font-mono">{b.boxNumber}</span>
+                        <span className="text-muted-foreground truncate">{locationText(placed[b.id])}</span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </aside>
     </div>
   )
 }

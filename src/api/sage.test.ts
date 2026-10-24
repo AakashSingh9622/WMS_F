@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-// DocuSoft calls are faked: Sage app credentials, the client's CCode, and the CCode write-back.
-const docusoft = vi.hoisted(() => ({ calls: [] as { method: string; params?: Record<string, unknown> }[], ccode: "" }))
+// DocuSoft calls are faked: the practice's active accounting system, Sage app credentials, the client's CCode, and the
+// CCode write-back.
+const docusoft = vi.hoisted(() => ({
+  calls: [] as { method: string; params?: Record<string, unknown> }[],
+  ccode: "",
+  accounting: { IsSageOne: true } as Record<string, unknown>,
+}))
 vi.mock("@/store/docusoftApi", () => ({
   callDocusoft: async (method: string, params?: Record<string, unknown>) => {
     docusoft.calls.push({ method, params })
+    if (method === "Json_GetXeroQBDetails") return JSON.stringify({ Table: [docusoft.accounting] })
     if (method === "Json_GetSageCredentials")
       return { Table: [{ SageClientId: "app-id", SageClientSecret: "app-secret" }] }
     if (method === "Json_GetSupplierListByProjectOrgNo") return JSON.stringify({ Table: [{ CCode: docusoft.ccode }] })
@@ -25,7 +31,15 @@ vi.mock("@/api/invoices", () => ({
   },
 }))
 
-import { NOT_CONNECTED, SageError, clearSageTokens, getSageAccessToken, hasSageSession } from "@/api/sage"
+import {
+  NOT_CONNECTED,
+  SAGE_NOT_ACTIVE,
+  SageError,
+  clearSageTokens,
+  getActiveAccountingSystem,
+  getSageAccessToken,
+  hasSageSession,
+} from "@/api/sage"
 import { sendInvoiceToSage } from "@/staff/features/billing/send-to-sage"
 import type { Invoice } from "@/api/invoices"
 
@@ -38,6 +52,7 @@ beforeEach(() => {
   clearSageTokens()
   docusoft.calls = []
   docusoft.ccode = ""
+  docusoft.accounting = { IsSageOne: true }
   backend.calls = []
   proxyCalls = []
   proxy = {}
@@ -106,7 +121,8 @@ const invoice: Invoice = {
   createdAt: "2026-11-01T00:00:00.000Z",
   lines: [{ kind: "storage", description: "Storage", quantity: 2, unitPrice: 5, taxRateId: "GB_STANDARD" }],
 }
-const send = () => sendInvoiceToSage({ invoice, projectId: 12, ledgerAccountId: "L-1", address: { city: "Leeds" } })
+const address = { line1: "1 Park Row", city: "Leeds", postcode: "LS1 5AB" }
+const send = () => sendInvoiceToSage({ invoice, projectId: 12, ledgerAccountId: "L-1", address })
 
 describe("sending an invoice to Sage", () => {
   beforeEach(() => {
@@ -135,6 +151,21 @@ describe("sending an invoice to Sage", () => {
     expect(backend.calls).toEqual(["start:inv-1", "issued:inv-1:S-1"])
     expect(issued).toMatchObject({ sageInvoiceNumber: "SI-1", sageLink: "https://sage/S-1" })
     expect(proxyCalls.some((c) => c.api === "createContact")).toBe(false)
+  })
+
+  it("an order's invoice: reports Sage's total incl. VAT and the client's Stripe customer back", async () => {
+    docusoft.ccode = "C-LINKED"
+    proxy.createSalesInvoice = () => ({
+      status: true,
+      data: { id: "S-1", invoice_number: "SI-1", total_amount: "120.00", currency: { id: "GBP" }, links: [] },
+    })
+    const { invoice: issued } = await sendInvoiceToSage({
+      invoice: { ...invoice, orderId: "o1" },
+      projectId: 12,
+      ledgerAccountId: "L-1",
+      stripeCustomerId: "cus_9",
+    })
+    expect(issued).toMatchObject({ grossTotal: 120, currency: "GBP", stripeCustomerId: "cus_9" })
   })
 
   it("never creates a second Sage invoice: an existing one with our reference is used instead", async () => {
@@ -185,7 +216,35 @@ describe("sending an invoice to Sage", () => {
     proxy.createSalesInvoice = () => ({ status: false, error: [{ $message: "Invoice Address is required" }] })
     await expect(send()).rejects.toThrow(/no address in Sage One/)
     expect(backend.calls[0]).toBe("start:inv-1")
-    expect(backend.calls[1]).toMatch(/^failed:inv-1:This client has no address in Sage One/)
+    expect(backend.calls[1]).toMatch(
+      /^failed:inv-1:Creating the invoice in Sage One: This client has no address in Sage One/,
+    )
+  })
+
+  it('Sage\'s "This field is required" says which field, and at which step', async () => {
+    docusoft.ccode = "C-LINKED"
+    proxy.createSalesInvoice = () => ({
+      status: false,
+      error: [
+        { $message: "This field is required.", $source: "invoice_lines.0.ledger_account_id" },
+        { $message: "This field is required.", $source: "main_address.address_line_1" },
+      ],
+    })
+    await expect(send()).rejects.toThrow(
+      "Creating the invoice in Sage One: This field is required: ledger account (line 1); This field is required: address line 1 (main address)",
+    )
+    expect(backend.calls[1]).toContain("ledger account (line 1)")
+  })
+
+  it("unlinked client with no Sage contact and no address: stops with a clear reason, creates nothing", async () => {
+    proxy.getContacts = () => ({ status: true, data: { contacts: [] } })
+    await expect(
+      sendInvoiceToSage({ invoice, projectId: 12, ledgerAccountId: "L-1", address: undefined }),
+    ).rejects.toThrow(
+      /Finding or creating the client in Sage One: Acme Ltd isn't in Sage One yet, and its DocuSoft client card has no address/,
+    )
+    expect(proxyCalls.some((c) => c.api === "createContact" || c.api === "createSalesInvoice")).toBe(false)
+    expect(backend.calls[1]).toMatch(/^failed:inv-1:Finding or creating the client/)
   })
 
   it("an expired access token mid-call is refreshed once and the call retried", async () => {
@@ -207,5 +266,35 @@ describe("sending an invoice to Sage", () => {
     clearSageTokens()
     await expect(send()).rejects.toBeInstanceOf(SageError)
     expect(backend.calls).toEqual([])
+  })
+
+  it("checks the practice's accounting system first, then the client's Sage link, then creates the invoice", async () => {
+    docusoft.ccode = "C-LINKED"
+    await send()
+    expect(docusoft.calls.map((c) => c.method)).toEqual(["Json_GetXeroQBDetails", "Json_GetSupplierListByProjectOrgNo"])
+    expect(docusoft.calls[1].params).toEqual({ ProjectId: 12, OrgNo: "ORG-9" })
+  })
+
+  it.each([{ IsXero: true }, { IsQB: true }, { IsGusto: true }, { IsSilverFin: true }, {}])(
+    "Sage One not the active accounting system (%o): nothing is sent, locked or looked up",
+    async (flags) => {
+      docusoft.accounting = flags
+      docusoft.ccode = "C-LINKED"
+      await expect(send()).rejects.toMatchObject({ code: SAGE_NOT_ACTIVE })
+      expect(backend.calls).toEqual([])
+      expect(proxyCalls).toEqual([])
+      expect(docusoft.calls.map((c) => c.method)).toEqual(["Json_GetXeroQBDetails"])
+    },
+  )
+})
+
+describe("active accounting system", () => {
+  it("reads Practice's flags in Practice's order", async () => {
+    docusoft.accounting = { IsXero: false, IsQB: "false", IsSageOne: "true" }
+    expect(await getActiveAccountingSystem()).toBe("SageOne")
+    docusoft.accounting = { IsXero: true, IsSageOne: true }
+    expect(await getActiveAccountingSystem()).toBe("Xero")
+    docusoft.accounting = {}
+    expect(await getActiveAccountingSystem()).toBeNull()
   })
 })

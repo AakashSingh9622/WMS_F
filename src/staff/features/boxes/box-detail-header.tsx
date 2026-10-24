@@ -11,7 +11,7 @@ import { useCan } from "@/auth/useAuth"
 import { BoxActions } from "@/staff/features/boxes/box-actions"
 import { PlaceHoldDialog } from "@/staff/features/records/legal-holds-screen"
 import { BoxStatusBadge } from "@/components/status-badge"
-import { LocationPath } from "@/components/location-path"
+import { StoredLocation } from "@/components/location-path"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -76,13 +76,7 @@ export function BoxDetailHeader({ boxId }: { boxId: string }) {
           {box.clientName}
         </Link>
         {box.locationPath ? (
-          <LocationPath
-            segments={[
-              { label: box.locationPath.warehouse },
-              { label: `Rack ${box.locationPath.rack}` },
-              { label: `Slot ${box.locationPath.slot}` },
-            ]}
-          />
+          <StoredLocation path={box.locationPath} />
         ) : (
           <span>{box.status === "missing" ? "Last known location is in the history" : "Not allocated to a slot"}</span>
         )}

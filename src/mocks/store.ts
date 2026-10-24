@@ -378,7 +378,7 @@ export function createOrder(input: CreateOrderInput): Order {
     return box
   })
 
-  const status: OrderStatus = input.requestedVia === "portal" ? "requested" : "approved"
+  const status: OrderStatus = input.requestedVia === "portal" ? "requested" : "billing"
   const id = `order-${store.nextOrderIdSeq++}`
   store.orderSeq[input.type]++
   const number = orderNumber(input.type, store.orderSeq[input.type])
@@ -437,7 +437,7 @@ export function createOrder(input: CreateOrderInput): Order {
 export function approveOrder(orderId: string): Order {
   const store = load()
   const order = getOrderOrThrow(store, orderId)
-  setOrderStatus(store, order, "approved")
+  setOrderStatus(store, order, "billing")
   persist()
   return order
 }

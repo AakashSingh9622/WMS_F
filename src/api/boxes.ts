@@ -56,6 +56,20 @@ export function useBox(boxId: string) {
   })
 }
 
+/**
+ * A box by a scanned / typed code: its current barcode or its box number (Sprint 11, "scan to see a box"). Not found ->
+ * the query errors with the API's message ("No box has the barcode …").
+ */
+export function useBoxLookup(code: string) {
+  return useQuery({
+    queryKey: [...queryKeys.boxes.detail("lookup"), code],
+    queryFn: async (): Promise<Box> =>
+      parse(boxSchema, await apiClient.get(`/boxes/lookup?code=${encodeURIComponent(code)}`)),
+    enabled: !!code,
+    retry: false,
+  })
+}
+
 export function useBoxOrders(boxId: string) {
   return useQuery({
     queryKey: [...queryKeys.boxes.detail(boxId), "orders"],
@@ -92,6 +106,30 @@ export function useCreateBoxesBatch() {
   return useMutation({
     mutationFn: async (input: CreateBoxesBatchInput): Promise<Box[]> =>
       parse(z.array(boxSchema), await apiClient.post("/boxes/batch", input)),
+    onSuccess: () => invalidateBoxesAndShared(queryClient),
+  })
+}
+
+export interface CorrectBoxesInput {
+  boxIds: string[]
+  clientId?: string
+  clientName?: string
+  size?: Box["size"]
+  description?: string
+  department?: string
+  reference?: string
+  filingDateFrom?: string
+  filingDateTo?: string
+  destroyAfter?: string
+  retentionCategory?: string
+}
+
+/** Register wizard, back on step 1: fix the details of the whole batch at once (client / size only while not filed). */
+export function useCorrectRegisteredBoxes() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: CorrectBoxesInput): Promise<Box[]> =>
+      parse(z.array(boxSchema), await apiClient.post("/boxes/correct-batch", input)),
     onSuccess: () => invalidateBoxesAndShared(queryClient),
   })
 }

@@ -125,6 +125,23 @@ the length of ONE cell in cm or feet; the backend converts feet → whole cm and
 change both together). `src/domain/slotSuggestion.ts` + the MSW location mocks still use the old unit model but
 are dead code now that Warehouse/Rack/Slot go to the real backend.
 
+Box sizes (Sprint 11) are a list, not an enum: `Box.size` is a size code (`standard`, `large`, or one an admin added in
+Settings → Box sizes, e.g. `archive-xl`) with a name and a length. Read names / lengths with `useBoxSizes`,
+`useBoxSizeName`, `useBoxLengths` (`src/api/settings.ts`) — never compare `size === "large"`. Rate cards price storage
+per size code.
+
+Scanning: `useBarcodeScanner` (`src/hooks/`) spots a handheld scanner's fast "typing" outside text fields; the top bar's
+Scan button (`src/staff/features/scanning/scan-box-dialog.tsx`) shows the box (`GET /api/boxes/lookup?code=`). The
+camera (`src/components/camera-scanner.tsx`) uses the browser's BarcodeDetector, else `@zxing/browser` (loaded only
+when opened); it needs https or localhost.
+
+Hierarchy (Sprint 10): warehouse → zone → aisle → rack → shelf → position. Zone and aisle are **optional labels on the
+rack** (an aisle may sit in a zone or straight in the warehouse); a shelf is a rack's row and a position its cell (slot),
+so slots never changed. Staff find a location by code — `B04-3` (shelf) / `B04-3-2` (position) via
+`GET /api/locations/resolve` — or browse; both live in `src/staff/features/warehouses/choose-location.tsx`. Always show
+a stored location through `StoredLocation` / `locationText` (`src/domain/location.ts`): history keeps older
+`{ warehouse, rack, slot }` snapshots next to the new ones with zone / aisle / shelf / position.
+
 ## Screen layout & lists (fixed-height shell, paginated tables)
 
 The staff shell is exactly one screen tall (`h-svh`): the top bar never scrolls away and only the content area scrolls.

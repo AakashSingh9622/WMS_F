@@ -7,6 +7,7 @@ export const queryKeys = {
     all: ["warehouses"] as const,
     detail: (id: string) => ["warehouses", id] as const,
     racks: (id: string) => ["warehouses", id, "racks"] as const,
+    layout: (id: string) => ["warehouses", id, "layout"] as const,
   },
   racks: {
     detail: (id: string) => ["racks", id] as const,
