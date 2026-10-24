@@ -2,6 +2,7 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
 import type { Role } from "@/api/types"
+import { can, type Permission } from "@/domain/permissions"
 import { SESSION_COOKIE, decodeSession, homeForSide, type SessionClaims } from "@/auth/session-shared"
 
 export { SESSION_COOKIE, encodeSession, decodeSession, homeForSide, type SessionClaims } from "@/auth/session-shared"
@@ -32,5 +33,16 @@ export async function requireSide(side: SessionClaims["side"]): Promise<SessionC
 export async function requireRole(role: Role): Promise<SessionClaims> {
   const session = await requireSide(role.startsWith("staff") ? "staff" : "client")
   if (!session.roles.includes(role)) redirect("/403")
+  return session
+}
+
+/**
+ * Server Component only: staff page that needs a permission (src/domain/permissions.ts). Reads the roles in the
+ * session cookie, which are set at login — a role given or taken away later reaches page guards at the next login
+ * (the API and the buttons use fresh roles straight away).
+ */
+export async function requirePermission(permission: Permission): Promise<SessionClaims> {
+  const session = await requireSide("staff")
+  if (!can(session.roles, permission)) redirect("/403")
   return session
 }

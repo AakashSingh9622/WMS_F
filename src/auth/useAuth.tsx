@@ -10,6 +10,7 @@ import { clearDocusoftCredentials, getDocusoftCredentials, storeDocusoftCredenti
 import { docusoftApi } from "@/store/docusoftApi"
 import { clientsUiReset } from "@/store/clientsUiSlice"
 import type { Role } from "@/api/types"
+import { can, type Permission } from "@/domain/permissions"
 
 export interface AuthUser {
   id: string
@@ -145,4 +146,10 @@ export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error("useAuth must be used within AuthProvider")
   return ctx
+}
+
+/** Can the signed-in user do this? Uses the fresh roles from /api/auth/me. UI only — the API enforces it too. */
+export function useCan(permission: Permission): boolean {
+  const { user } = useAuth()
+  return can(user?.roles, permission)
 }

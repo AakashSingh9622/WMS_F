@@ -1,10 +1,10 @@
-import type { Role } from "@/api/types"
+import type { Permission } from "@/domain/permissions"
 
 export interface NavItem {
   href: string
   label: string
-  /** When set, only these roles see the item. Guards still enforce access server-side. */
-  roles?: Role[]
+  /** When set, only users with this permission see the item. Guards still enforce access server-side. */
+  permission?: Permission
 }
 
 export const staffNavItems: NavItem[] = [
@@ -13,7 +13,7 @@ export const staffNavItems: NavItem[] = [
   { href: "/app/orders", label: "Orders" },
   { href: "/app/warehouses", label: "Warehouses" },
   { href: "/app/clients", label: "Clients" },
-  { href: "/app/audit", label: "Audit log", roles: ["staff_admin"] },
+  { href: "/app/audit", label: "Audit log", permission: "audit.read" },
   { href: "/app/settings", label: "Settings" },
 ]
 

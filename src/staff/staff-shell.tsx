@@ -19,6 +19,7 @@ import iconImage from "@/app/icon.png"
 
 import { useAuth } from "@/auth/useAuth"
 import { staffNavItems } from "@/domain/navigation"
+import { can } from "@/domain/permissions"
 import { UserMenu } from "@/components/user-menu"
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs"
 import {
@@ -48,8 +49,7 @@ const navIcons: Record<string, AppIcon> = {
 export function StaffShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const { user } = useAuth()
-  const roles = user?.roles ?? []
-  const items = staffNavItems.filter((item) => !item.roles || item.roles.some((r) => roles.includes(r)))
+  const items = staffNavItems.filter((item) => !item.permission || can(user?.roles, item.permission))
 
   return (
     <div className="side-staff">

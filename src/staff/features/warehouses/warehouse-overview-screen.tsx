@@ -6,7 +6,7 @@ import Link from "next/link"
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { useAuth } from "@/auth/useAuth"
+import { useCan } from "@/auth/useAuth"
 import { useCreateRack, useWarehouse, useWarehouseRacks } from "@/api/warehouses"
 import { CapacityBar } from "@/components/capacity-bar"
 import { capacityLevel } from "@/lib/capacity"
@@ -136,8 +136,7 @@ function AddRackDialog({ warehouseId }: { warehouseId: string }) {
 }
 
 export function WarehouseOverviewScreen({ warehouseId }: { warehouseId: string }) {
-  const { user } = useAuth()
-  const isAdmin = user?.roles.includes("staff_admin") ?? false
+  const canManageLayout = useCan("layout.manage")
   const { data: warehouse, isLoading: loadingWarehouse } = useWarehouse(warehouseId)
   const { data: racks, isLoading: loadingRacks, isError } = useWarehouseRacks(warehouseId)
 
@@ -152,7 +151,7 @@ export function WarehouseOverviewScreen({ warehouseId }: { warehouseId: string }
           icon={MapPin}
           title={`${warehouse?.code} — ${warehouse?.name}`}
           description={warehouse?.address}
-          actions={isAdmin ? <AddRackDialog warehouseId={warehouseId} /> : undefined}
+          actions={canManageLayout ? <AddRackDialog warehouseId={warehouseId} /> : undefined}
         />
       )}
 
@@ -181,7 +180,7 @@ export function WarehouseOverviewScreen({ warehouseId }: { warehouseId: string }
 
       {racks && racks.length === 0 && (
         <p className="text-muted-foreground text-sm">
-          No racks yet. {isAdmin ? "Use “Add rack” above to create one." : "Ask an admin to add one."}
+          No racks yet. {canManageLayout ? "Use “Add rack” above to create one." : "Ask an admin to add one."}
         </p>
       )}
 

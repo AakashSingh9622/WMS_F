@@ -7,7 +7,7 @@ import { useMemo, useState } from "react"
 import { Warehouse as WarehouseIcon } from "@/components/icons"
 import { toast } from "sonner"
 
-import { useAuth } from "@/auth/useAuth"
+import { useCan } from "@/auth/useAuth"
 import { useCreateWarehouse, useWarehouses } from "@/api/warehouses"
 import type { Warehouse } from "@/api/types"
 import { CapacityBar } from "@/components/capacity-bar"
@@ -116,8 +116,7 @@ function AddWarehouseDialog({ existing }: { existing: Warehouse[] }) {
 }
 
 export function WarehousesListScreen() {
-  const { user } = useAuth()
-  const isAdmin = user?.roles.includes("staff_admin") ?? false
+  const canManageLayout = useCan("layout.manage")
   const { data: warehouses, isLoading, isError } = useWarehouses()
 
   return (
@@ -126,7 +125,7 @@ export function WarehousesListScreen() {
         icon={MapPin}
         title="Warehouses"
         description="Storage capacity across every site."
-        actions={isAdmin ? <AddWarehouseDialog existing={warehouses ?? []} /> : undefined}
+        actions={canManageLayout ? <AddWarehouseDialog existing={warehouses ?? []} /> : undefined}
       />
 
       {isLoading && (

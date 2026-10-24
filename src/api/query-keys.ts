@@ -30,6 +30,13 @@ export const queryKeys = {
   audit: {
     search: (params: unknown) => ["audit", "search", params] as const,
   },
+  adminAudit: {
+    all: ["admin-audit"] as const,
+    search: (params: unknown) => ["admin-audit", params] as const,
+  },
+  users: {
+    all: ["users"] as const,
+  },
   portal: {
     summary: ["portal", "summary"] as const,
     boxes: (params: unknown) => ["portal", "boxes", params] as const,

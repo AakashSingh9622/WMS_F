@@ -1,7 +1,7 @@
-import { requireRole } from "@/auth/session"
-import { RouteStub } from "@/components/route-stub"
+import { requirePermission } from "@/auth/session"
+import { UsersScreen } from "@/staff/features/settings/users-screen"
 
 export default async function UsersSettingsPage() {
-  await requireRole("staff_admin")
-  return <RouteStub title="Users" />
+  await requirePermission("users.manage")
+  return <UsersScreen />
 }
