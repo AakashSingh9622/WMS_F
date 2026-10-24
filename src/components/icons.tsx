@@ -72,6 +72,8 @@ export const MATERIAL_ICON_NAMES = [
   "pin_drop",
   "print",
   "barcode_scanner",
+  "notifications",
+  "signature",
   "photo_camera",
   "playlist_add_check",
   "receipt_long",
@@ -135,6 +137,8 @@ export const PanelLeftIcon = make("left_panel_open")
 export const Pencil = make("edit")
 export const Printer = make("print")
 export const BarcodeScanner = make("barcode_scanner")
+export const Bell = make("notifications")
+export const Signature = make("signature")
 export const Camera = make("photo_camera")
 export const ScrollText = make("receipt_long")
 export const Invoice = make("request_quote")

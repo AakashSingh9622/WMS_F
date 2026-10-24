@@ -110,9 +110,22 @@ export function DestructionCertificateDocument({ orderId }: { orderId: string })
         </table>
       </section>
 
-      <footer className="grid grid-cols-2 gap-12 pt-10">
-        <div className="border-t pt-1 text-xs text-black/60">Signed for DocuSoft</div>
-        <div className="border-t pt-1 text-xs text-black/60">Date</div>
+      {/* Signed by the person who marked the boxes destroyed (signature copied when the certificate was issued). */}
+      <footer className="grid grid-cols-2 items-end gap-12 pt-10 break-inside-avoid">
+        <div>
+          <div className="flex h-20 items-end">
+            {c.destroyedBySignature && (
+              <img src={c.destroyedBySignature.image} alt="Signature" className="max-h-20 max-w-full object-contain" />
+            )}
+          </div>
+          <div className="border-t pt-1 text-xs text-black/60">
+            Signed for DocuSoft{c.destroyedBy ? ` — ${c.destroyedBy}` : ""}
+          </div>
+        </div>
+        <div>
+          <div className="flex h-20 items-end pb-1 text-sm">{formatDate(c.destroyedAt)}</div>
+          <div className="border-t pt-1 text-xs text-black/60">Date</div>
+        </div>
       </footer>
     </div>
   )

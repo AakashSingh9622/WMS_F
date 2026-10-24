@@ -61,6 +61,7 @@ export const routeLabels: Record<string, string> = {
   sage: "Sage",
   settings: "Settings",
   profile: "Profile",
+  signature: "My signature",
   "warehouse-layout": "Warehouse layout",
   labels: "Labels",
   inventory: "Inventory",

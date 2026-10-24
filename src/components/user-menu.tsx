@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
-import { LogOut, Monitor, Moon, Sun, User } from "@/components/icons"
+import Link from "next/link"
+import { LogOut, Monitor, Moon, Signature, Sun, User } from "@/components/icons"
 
 import { useAuth } from "@/auth/useAuth"
 import { Button } from "@/components/ui/button"
@@ -35,6 +36,15 @@ export function UserMenu() {
           <DropdownMenuLabel className="truncate">{user.email}</DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
+        {user.side === "staff" && (
+          <>
+            {/* the signature that goes on the certificates of destruction this person signs */}
+            <DropdownMenuItem render={<Link href="/app/profile/signature" />}>
+              <Signature /> My signature
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem onClick={() => setTheme("light")}>
           <Sun /> Light
         </DropdownMenuItem>
