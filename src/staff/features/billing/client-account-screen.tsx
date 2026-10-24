@@ -89,8 +89,11 @@ function InvoiceRows({ items, canManage }: { items: AccountInvoice[]; canManage:
   )
 }
 
-/** One client's statement: the period's invoices with what's paid / owed, and older invoices still unpaid. */
-export function ClientAccountScreen({ clientId }: { clientId: string }) {
+/**
+ * One client's statement: the period's invoices with what's paid / owed, and older invoices still unpaid. Shown under
+ * Billing → Accounts and, `embedded`, as the Billing tab of the client's page (which already has the client's name).
+ */
+export function ClientAccountScreen({ clientId, embedded = false }: { clientId: string; embedded?: boolean }) {
   const canManage = useCan("billing.manage")
   const { data: clients } = useGetClientsWithDetailsQuery()
   const clientName = clients?.find((c) => c.ClientId === clientId)?.Client
@@ -100,27 +103,38 @@ export function ClientAccountScreen({ clientId }: { clientId: string }) {
   if (isLoading || !data) return <Skeleton className="h-64 w-full max-w-5xl" />
   const s = data.summary
 
+  const actions = (
+    <div className="flex gap-2">
+      {canManage && <UpdateFromSageButton clientId={clientId} />}
+      {canManage && (
+        <Button
+          nativeButton={false}
+          render={<Link href={`/app/billing/new?clientId=${encodeURIComponent(clientId)}`} />}
+        >
+          New invoice
+        </Button>
+      )}
+    </div>
+  )
+
   return (
     <div className="max-w-6xl space-y-4">
-      <PageHeader
-        icon={Invoice}
-        title={clientName ?? s.clientName}
-        description="Standing account — invoices in Sage, what's paid and what's still owed."
-        actions={
-          <div className="flex gap-2">
-            {canManage && <UpdateFromSageButton clientId={clientId} />}
-            {canManage && (
-              <Button
-                nativeButton={false}
-                render={<Link href={`/app/billing/new?clientId=${encodeURIComponent(clientId)}`} />}
-              >
-                New invoice
-              </Button>
-            )}
-          </div>
-        }
-      />
-      <PeriodPicker value={period} onChange={setPeriod} />
+      {embedded ? (
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <PeriodPicker value={period} onChange={setPeriod} />
+          {actions}
+        </div>
+      ) : (
+        <>
+          <PageHeader
+            icon={Invoice}
+            title={clientName ?? s.clientName}
+            description="Standing account — invoices in Sage, what's paid and what's still owed."
+            actions={actions}
+          />
+          <PeriodPicker value={period} onChange={setPeriod} />
+        </>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {[
