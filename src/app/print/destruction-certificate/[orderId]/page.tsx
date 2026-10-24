@@ -1,8 +1,8 @@
-import { RouteStub } from "@/components/route-stub"
+import { DestructionCertificateDocument } from "@/print/documents/destruction-certificate-document"
 
 export default async function DestructionCertificatePrintPage({
   params,
 }: PageProps<"/print/destruction-certificate/[orderId]">) {
   const { orderId } = await params
-  return <RouteStub title={`Certificate of destruction — ${orderId}`} />
+  return <DestructionCertificateDocument orderId={orderId} />
 }

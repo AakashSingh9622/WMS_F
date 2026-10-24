@@ -9,7 +9,10 @@ import {
   useMarkBoxMissing,
   useMarkLabelsPrinted,
   usePlaceBoxHold,
+  useQuarantineBox,
+  useRelabelBox,
   useReleaseBoxHold,
+  useReleaseQuarantine,
   useUpdateBoxDetails,
 } from "@/api/boxes"
 import { Button } from "@/components/ui/button"
@@ -18,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import type { Box } from "@/api/types"
+import { RetentionCategoryField } from "@/staff/features/boxes/retention-category-field"
 
 function onError(err: unknown) {
   toast.error(err instanceof Error ? err.message : "That didn't work")
@@ -29,6 +33,7 @@ function EditDetailsDialog({ box }: { box: Box }) {
   const [department, setDepartment] = useState(box.department ?? "")
   const [reference, setReference] = useState(box.reference ?? "")
   const [destroyAfter, setDestroyAfter] = useState(box.destroyAfter ?? "")
+  const [retentionCategory, setRetentionCategory] = useState(box.retentionCategory ?? "")
   const [reason, setReason] = useState("")
   const update = useUpdateBoxDetails()
 
@@ -41,6 +46,8 @@ function EditDetailsDialog({ box }: { box: Box }) {
           department: department !== (box.department ?? "") ? department : undefined,
           reference: reference !== (box.reference ?? "") ? reference : undefined,
           destroyAfter: destroyAfter !== (box.destroyAfter ?? "") ? destroyAfter : undefined,
+          retentionCategory:
+            retentionCategory && retentionCategory !== (box.retentionCategory ?? "") ? retentionCategory : undefined,
           reason,
         },
       })
@@ -81,6 +88,7 @@ function EditDetailsDialog({ box }: { box: Box }) {
               onChange={(e) => setDestroyAfter(e.target.value)}
             />
           </Field>
+          <RetentionCategoryField value={retentionCategory} onChange={setRetentionCategory} />
           <Field>
             <FieldLabel htmlFor="edit-reason">Reason for this change</FieldLabel>
             <Input id="edit-reason" value={reason} onChange={(e) => setReason(e.target.value)} />
@@ -126,6 +134,57 @@ function HoldDialog({ box }: { box: Box }) {
         <DialogFooter>
           <Button onClick={submit} disabled={!reason || placeHold.isPending}>
             {placeHold.isPending ? "Saving…" : "Place hold"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** A button that asks for a reason before running the action (quarantine, re-label). */
+function ReasonDialog({
+  label,
+  title,
+  description,
+  confirm,
+  pending,
+  onSubmit,
+}: {
+  label: string
+  title: string
+  description?: string
+  confirm: string
+  pending: boolean
+  onSubmit: (reason: string) => Promise<unknown>
+}) {
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState("")
+
+  async function submit() {
+    try {
+      await onSubmit(reason.trim())
+      setOpen(false)
+      setReason("")
+    } catch (err) {
+      onError(err)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button variant="outline" size="sm" />}>{label}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        {description && <p className="text-muted-foreground text-sm">{description}</p>}
+        <Field>
+          <FieldLabel htmlFor={`reason-${label}`}>Reason</FieldLabel>
+          <Input id={`reason-${label}`} value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+        <DialogFooter>
+          <Button onClick={submit} disabled={!reason.trim() || pending}>
+            {pending ? "Saving…" : confirm}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -183,6 +242,11 @@ export function BoxActions({ box }: { box: Box }) {
   const canHold = useCan("boxes.hold")
   const releaseHold = useReleaseBoxHold()
   const markPrinted = useMarkLabelsPrinted()
+  const quarantine = useQuarantineBox()
+  const releaseQuarantine = useReleaseQuarantine()
+  const relabel = useRelabelBox()
+  // Quarantine is only for a box that is with us and not on an order (the API says why otherwise).
+  const canQuarantineNow = ["stored", "digitized", "unallocated", "received"].includes(box.status) && !box.openOrder
 
   if (box.status === "destroyed" || (!canOperate && !canHold)) return null
 
@@ -228,6 +292,47 @@ export function BoxActions({ box }: { box: Box }) {
       )}
 
       {canOperate && box.status !== "missing" && <MissingDialog box={box} />}
+
+      {canHold && canQuarantineNow && (
+        <ReasonDialog
+          label="Quarantine"
+          title="Quarantine this box"
+          description="It stays where it is but can't go on any order until it's released (e.g. water damage, under investigation)."
+          confirm="Quarantine"
+          pending={quarantine.isPending}
+          onSubmit={async (reason) => {
+            await quarantine.mutateAsync({ boxId: box.id, reason })
+            toast.success("Box quarantined")
+          }}
+        />
+      )}
+      {canHold && box.status === "quarantined" && (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={releaseQuarantine.isPending}
+          onClick={() =>
+            releaseQuarantine.mutate(box.id, { onSuccess: () => toast.success("Released from quarantine"), onError })
+          }
+        >
+          {releaseQuarantine.isPending ? "Saving…" : "Release quarantine"}
+        </Button>
+      )}
+
+      {canOperate && (
+        <ReasonDialog
+          label="Re-label"
+          title="Give this box a new label"
+          description="Same box, new barcode — the old label stops scanning. The new label opens for printing."
+          confirm="Make new label"
+          pending={relabel.isPending}
+          onSubmit={async (reason) => {
+            const updated = await relabel.mutateAsync({ boxId: box.id, reason })
+            window.open(`/print/labels?boxIds=${updated.id}`, "_blank")
+            toast.success(`New barcode ${updated.barcode}`)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -1,5 +1,8 @@
-import { RouteStub } from "@/components/route-stub"
+import { requirePermission } from "@/auth/session"
+import { PickScreen } from "@/staff/features/scanning/pick-screen"
 
-export default function PickPage() {
-  return <RouteStub title="Pick" />
+export default async function PickPage({ params }: PageProps<"/app/orders/[orderId]/pick">) {
+  await requirePermission("orders.operate")
+  const { orderId } = await params
+  return <PickScreen orderId={orderId} />
 }

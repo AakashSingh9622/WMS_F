@@ -17,6 +17,7 @@ import { OrderTypeLabel } from "@/components/order-type-icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
@@ -49,6 +50,7 @@ export function CreateOrderScreen() {
   const [expectedNewBoxes, setExpectedNewBoxes] = useState("0")
   const [scheduledFor, setScheduledFor] = useState("")
   const [notes, setNotes] = useState("")
+  const [permanentWithdrawal, setPermanentWithdrawal] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const { data: clients } = useGetClientsWithDetailsQuery()
@@ -132,6 +134,7 @@ export function CreateOrderScreen() {
         contactEmail: contactEmail.trim().toLowerCase(),
         scheduledFor: scheduledFor || undefined,
         notes: notes || undefined,
+        permanentWithdrawal: type === "dispatch" ? permanentWithdrawal : undefined,
       })
       toast.success(`Order ${order.orderNumber} created`)
       router.push(`/app/orders/${order.id}`)
@@ -306,6 +309,23 @@ export function CreateOrderScreen() {
                   onChange={(e) => setScheduledFor(e.target.value)}
                 />
               </Field>
+
+              {type === "dispatch" && (
+                <label className="flex cursor-pointer items-start gap-3 text-sm">
+                  <Checkbox
+                    className="mt-0.5"
+                    checked={permanentWithdrawal}
+                    onCheckedChange={(v) => setPermanentWithdrawal(!!v)}
+                  />
+                  <span>
+                    <span className="font-medium">Permanent withdrawal</span>
+                    <span className="text-muted-foreground block text-xs">
+                      The client keeps these boxes for good — they leave storage and can&apos;t come back on a
+                      collection.
+                    </span>
+                  </span>
+                </label>
+              )}
 
               <Field>
                 <FieldLabel htmlFor="notes">Notes</FieldLabel>

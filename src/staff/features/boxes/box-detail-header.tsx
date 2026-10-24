@@ -6,7 +6,10 @@ import { Copy } from "@/components/icons"
 import { toast } from "sonner"
 
 import { useBox } from "@/api/boxes"
+import { useLegalHolds } from "@/api/records"
+import { useCan } from "@/auth/useAuth"
 import { BoxActions } from "@/staff/features/boxes/box-actions"
+import { PlaceHoldDialog } from "@/staff/features/records/legal-holds-screen"
 import { BoxStatusBadge } from "@/components/status-badge"
 import { LocationPath } from "@/components/location-path"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +17,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 export function BoxDetailHeader({ boxId }: { boxId: string }) {
   const { data: box, isLoading } = useBox(boxId)
+  const canRecords = useCan("records.manage")
+  const { data: holds } = useLegalHolds({ coversBox: boxId })
 
   if (isLoading) {
     return (
@@ -98,7 +103,28 @@ export function BoxDetailHeader({ boxId }: { boxId: string }) {
         </div>
       )}
 
-      <BoxActions box={box} />
+      {!!holds?.items.length && (
+        <div className="bg-status-hold/10 border-status-hold/30 text-status-hold w-fit max-w-full rounded-md border px-3 py-2 text-sm">
+          <p className="font-semibold">Under legal hold — this box can&apos;t be destroyed</p>
+          {holds.items.map((h) => (
+            <p key={h.id}>
+              {h.authority}: {h.reason}
+              {h.scope === "client"
+                ? " (all of the client's boxes)"
+                : h.scope === "category"
+                  ? ` (category ${h.category})`
+                  : ""}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-start gap-2">
+        <BoxActions box={box} />
+        {canRecords && box.status !== "destroyed" && (
+          <PlaceHoldDialog box={{ id: box.id, boxNumber: box.boxNumber }} label="Legal hold" />
+        )}
+      </div>
     </div>
   )
 }

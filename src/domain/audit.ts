@@ -95,6 +95,34 @@ function describeForStaff(event: AuditEvent): DescribedAuditEvent {
       return { verb: "Hold released", text: `Hold released by ${by}` }
     case "status_changed":
       return { verb: "Status changed", text: `Status changed by ${by}` }
+    case "quarantined":
+      return { verb: "Quarantined", text: `Quarantined by ${by}${event.note ? ` — ${event.note}` : ""}` }
+    case "quarantine_released":
+      return { verb: "Quarantine released", text: `Released from quarantine by ${by}` }
+    case "relabelled": {
+      const change = event.changes?.[0]
+      const codes = change ? ` — ${change.from} → ${change.to}` : ""
+      return {
+        verb: "Re-labelled",
+        text: `Re-labelled by ${by}${codes}${event.note ? ` (${event.note})` : ""}`,
+      }
+    }
+    case "legal_hold_placed":
+      return { verb: "Legal hold placed", text: `Legal hold placed by ${by}${event.note ? ` — ${event.note}` : ""}` }
+    case "legal_hold_released":
+      return {
+        verb: "Legal hold released",
+        text: `Legal hold released by ${by}${event.note ? ` — ${event.note}` : ""}`,
+      }
+    case "destruction_approved":
+      return { verb: "Destruction approved", text: `Destruction approved by ${by} for order ${event.orderNumber}` }
+    case "contents_changed":
+      return { verb: "Contents updated", text: `Contents updated by ${by}${event.note ? ` — ${event.note}` : ""}` }
+    case "goods_in":
+      return {
+        verb: "Arrived",
+        text: `Arrived at ${event.toLocation?.warehouse ?? "the warehouse"} Goods-In, scanned by ${by}`,
+      }
   }
 }
 

@@ -3,7 +3,7 @@ import { z } from "zod"
 
 import { apiClient, parse } from "@/api/client"
 import { queryKeys } from "@/api/query-keys"
-import { boxSchema, orderSchema, slotSuggestionSchema } from "@/api/types"
+import { boxSchema, orderSchema, slotSchema, slotSuggestionSchema } from "@/api/types"
 import type { Box, BoxSize, BoxStatus, Order, SlotSuggestion } from "@/api/types"
 
 export interface BoxSearchInput {
@@ -80,6 +80,7 @@ export interface CreateBoxesBatchInput {
   filingDateFrom: string
   filingDateTo?: string
   destroyAfter?: string
+  retentionCategory?: string
   size: BoxSize
   orderId?: string
   orderNumber?: string
@@ -138,6 +139,7 @@ export interface UpdateBoxDetailsInput {
   filingDateFrom?: string
   filingDateTo?: string
   destroyAfter?: string
+  retentionCategory?: string
   reason: string
 }
 
@@ -172,6 +174,107 @@ export function useMarkBoxMissing() {
   return useMutation({
     mutationFn: async ({ boxId, note }: { boxId: string; note: string }): Promise<Box> =>
       parse(boxSchema, await apiClient.post(`/boxes/${boxId}/missing`, { note })),
+    onSuccess: () => invalidateBoxesAndShared(queryClient),
+  })
+}
+
+// --- Scanning (Goods-In, put-away), quarantine, re-label ----------------------------------------------------------
+
+/** A registered box arrives at a warehouse's Goods-In. Scanning it twice is harmless (alreadyReceived). */
+export function useReceiveAtGoodsIn() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { barcode: string; warehouseId: string }) =>
+      parse(z.object({ box: boxSchema, alreadyReceived: z.boolean() }), await apiClient.post("/boxes/receive", input)),
+    onSuccess: () => invalidateBoxesAndShared(queryClient),
+  })
+}
+
+/** Box barcode + slot barcode → the box goes on that shelf. A mismatch is refused and queued for a supervisor. */
+export function usePutAway() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { boxBarcode: string; slotBarcode: string; reason?: string }) =>
+      parse(z.object({ box: boxSchema, slot: slotSchema }), await apiClient.post("/boxes/put-away", input)),
+    onSuccess: () => invalidateBoxesAndShared(queryClient),
+  })
+}
+
+export function useQuarantineBox() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ boxId, reason }: { boxId: string; reason: string }): Promise<Box> =>
+      parse(boxSchema, await apiClient.post(`/boxes/${boxId}/quarantine`, { reason })),
+    onSuccess: () => invalidateBoxesAndShared(queryClient),
+  })
+}
+
+export function useReleaseQuarantine() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (boxId: string): Promise<Box> =>
+      parse(boxSchema, await apiClient.delete(`/boxes/${boxId}/quarantine`)),
+    onSuccess: () => invalidateBoxesAndShared(queryClient),
+  })
+}
+
+/** New barcode, same box. The old label stops scanning — print the new one. */
+export function useRelabelBox() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ boxId, reason }: { boxId: string; reason: string }): Promise<Box> =>
+      parse(boxSchema, await apiClient.post(`/boxes/${boxId}/relabel`, { reason })),
+    onSuccess: () => invalidateBoxesAndShared(queryClient),
+  })
+}
+
+// --- Contents (what is in the box, optionally the DocuSoft document) --------------------------------------------
+
+const boxContentSchema = z.object({
+  id: z.string(),
+  boxId: z.string(),
+  description: z.string(),
+  reference: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  docusoftDocumentId: z.string().optional(),
+  createdBy: z.object({ id: z.string(), name: z.string() }).passthrough(),
+  createdAt: z.string(),
+})
+export type BoxContent = z.infer<typeof boxContentSchema>
+
+export function useBoxContents(boxId: string) {
+  return useQuery({
+    queryKey: [...queryKeys.boxes.detail(boxId), "contents"],
+    queryFn: async () => parse(z.array(boxContentSchema), await apiClient.get(`/boxes/${boxId}/contents`)),
+  })
+}
+
+export function useAddBoxContent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      boxId,
+      input,
+    }: {
+      boxId: string
+      input: {
+        description: string
+        reference?: string
+        dateFrom?: string
+        dateTo?: string
+        docusoftDocumentId?: string
+      }
+    }) => parse(boxContentSchema, await apiClient.post(`/boxes/${boxId}/contents`, input)),
+    onSuccess: () => invalidateBoxesAndShared(queryClient),
+  })
+}
+
+export function useRemoveBoxContent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ boxId, contentId }: { boxId: string; contentId: string }) =>
+      apiClient.delete(`/boxes/${boxId}/contents/${contentId}`),
     onSuccess: () => invalidateBoxesAndShared(queryClient),
   })
 }

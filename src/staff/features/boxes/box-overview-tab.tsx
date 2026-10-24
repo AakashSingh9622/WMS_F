@@ -56,6 +56,7 @@ export function BoxOverviewTab({ boxId }: { boxId: string }) {
             <Field label="Filing from" value={formatDate(box.filingDateFrom)} />
             <Field label="Filing to" value={box.filingDateTo ? formatDate(box.filingDateTo) : undefined} />
             <Field label="Destroy after" value={box.destroyAfter ? formatDate(box.destroyAfter) : undefined} />
+            <Field label="Retention category" value={box.retentionCategory} />
             <Field label="Registered" value={formatDate(box.createdAt)} />
           </dl>
         </section>

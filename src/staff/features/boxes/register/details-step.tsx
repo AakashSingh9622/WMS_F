@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { Box, BoxSize } from "@/api/types"
+import { RetentionCategoryField } from "@/staff/features/boxes/retention-category-field"
 
 export interface RegisterDraft {
   clientId: string
@@ -22,6 +23,7 @@ export interface RegisterDraft {
   filingDateFrom: string
   filingDateTo: string
   destroyAfter: string
+  retentionCategory: string
   size: BoxSize
 }
 
@@ -36,6 +38,7 @@ export const emptyDraft = (): RegisterDraft => ({
   filingDateFrom: todayISO(),
   filingDateTo: "",
   destroyAfter: "",
+  retentionCategory: "",
   size: "standard",
 })
 
@@ -84,6 +87,7 @@ export function DetailsStep({
         filingDateFrom: draft.filingDateFrom,
         filingDateTo: draft.filingDateTo || undefined,
         destroyAfter: draft.destroyAfter || undefined,
+        retentionCategory: draft.retentionCategory || undefined,
         size: draft.size,
         orderId,
         orderNumber: orderLabel,
@@ -177,6 +181,8 @@ export function DetailsStep({
             onChange={(e) => set("destroyAfter", e.target.value)}
           />
         </Field>
+
+        <RetentionCategoryField value={draft.retentionCategory} onChange={(v) => set("retentionCategory", v)} />
 
         <Field>
           <FieldLabel htmlFor="size">Size</FieldLabel>

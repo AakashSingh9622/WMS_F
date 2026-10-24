@@ -1,5 +1,8 @@
-import { RouteStub } from "@/components/route-stub"
+import { requirePermission } from "@/auth/session"
+import { ReceiveScreen } from "@/staff/features/scanning/receive-screen"
 
-export default function ReceivePage() {
-  return <RouteStub title="Receive" />
+export default async function ReceivePage({ params }: PageProps<"/app/orders/[orderId]/receive">) {
+  await requirePermission("orders.operate")
+  const { orderId } = await params
+  return <ReceiveScreen orderId={orderId} />
 }

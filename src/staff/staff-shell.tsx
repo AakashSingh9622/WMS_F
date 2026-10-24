@@ -12,6 +12,8 @@ import {
   ScrollText,
   Search,
   Settings,
+  Shredder,
+  TriangleAlertIcon,
   Users,
   type AppIcon,
 } from "@/components/icons"
@@ -43,6 +45,8 @@ const navIcons: Record<string, AppIcon> = {
   "/app/orders": ClipboardList,
   "/app/warehouses": MapPin,
   "/app/clients": Users,
+  "/app/exceptions": TriangleAlertIcon,
+  "/app/records": Shredder,
   "/app/billing": Invoice,
   "/app/audit": ScrollText,
   "/app/settings": Settings,

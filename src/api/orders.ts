@@ -3,7 +3,15 @@ import { z } from "zod"
 
 import { apiClient, parse } from "@/api/client"
 import { queryKeys } from "@/api/query-keys"
-import { orderLineSchema, orderSchema, orderStatusSchema, orderTypeSchema } from "@/api/types"
+import {
+  boxStatusSchema,
+  locationPathSchema,
+  orderLineSchema,
+  orderLineStatusSchema,
+  orderSchema,
+  orderStatusSchema,
+  orderTypeSchema,
+} from "@/api/types"
 import type { DestructionMethod, Order, OrderLine, OrderStatus, OrderType } from "@/api/types"
 
 export interface OrderSearchInput {
@@ -66,6 +74,8 @@ export interface CreateOrderInput {
   contactPhone?: string
   scheduledFor?: string
   notes?: string
+  /** Dispatch only: the client keeps the boxes for good (they can't come back on a collection). */
+  permanentWithdrawal?: boolean
 }
 
 // Every mutation below invalidates broadly (orders/boxes/clients/audit/warehouses/racks) rather
@@ -111,7 +121,9 @@ export function useCancelOrder() {
   return useOrderAction<{ reason: string }>((id) => `/orders/${id}/cancel`)
 }
 export function useDispatchOrder() {
-  return useOrderAction<{ recipientName: string }>((id) => `/orders/${id}/dispatch`)
+  return useOrderAction<{ recipientName: string; courier?: string; trackingRef?: string }>(
+    (id) => `/orders/${id}/dispatch`,
+  )
 }
 export function useAuthoriseDestruction() {
   return useOrderAction<{ name: string; method?: DestructionMethod; reference?: string }>(
@@ -125,10 +137,85 @@ export function useAuthoriseDigitization() {
 }
 
 export function useDestroyOrder() {
-  return useOrderAction<{ witness?: string }>((id) => `/orders/${id}/destroy`)
+  return useOrderAction<{ witness?: string; place?: string }>((id) => `/orders/${id}/destroy`)
 }
+/** Second signature on a destruction — a records manager who did not prepare the order. */
+export function useApproveDestruction() {
+  return useOrderAction((id) => `/orders/${id}/approve-destruction`)
+}
+/** Proof of delivery for a dispatched order. */
+export function useRecordDelivery() {
+  return useOrderAction<{ receivedBy: string; proofReference?: string; deliveredAt?: string }>(
+    (id) => `/orders/${id}/delivered`,
+  )
+}
+/** Collection: returning boxes that weren't scanned are received now, into this warehouse's Goods-In if given. */
 export function useCompleteOrder() {
-  return useOrderAction((id) => `/orders/${id}/complete`)
+  return useOrderAction<{ warehouseId?: string }>((id) => `/orders/${id}/complete`)
+}
+
+/** Supervisor: pause an order (reason required); resume goes back to where it was. */
+export function useHoldOrder() {
+  return useOrderAction<{ reason: string }>((id) => `/orders/${id}/hold`)
+}
+export function useResumeOrder() {
+  return useOrderAction((id) => `/orders/${id}/resume`)
+}
+
+// --- Pick list and scanning ---------------------------------------------------------------------------------------
+
+export const pickListLineSchema = z.object({
+  lineId: z.string(),
+  boxId: z.string(),
+  boxNumber: z.string().optional(),
+  barcode: z.string().optional(),
+  description: z.string().optional(),
+  lineStatus: orderLineStatusSchema,
+  boxStatus: boxStatusSchema.optional(),
+  slotBarcode: z.string().optional(),
+  location: locationPathSchema.optional(),
+  scannedAt: z.string().optional(),
+})
+export type PickListLine = z.infer<typeof pickListLineSchema>
+
+/** The order's boxes in walking order (warehouse → rack → row → column); boxes not on a shelf come last. */
+export function usePickList(orderId: string) {
+  return useQuery({
+    queryKey: [...queryKeys.orders.detail(orderId), "pick-list"],
+    queryFn: async () =>
+      parse(
+        z.object({ order: orderSchema, lines: z.array(pickListLineSchema) }),
+        await apiClient.get(`/orders/${orderId}/pick-list`),
+      ),
+  })
+}
+
+const scanResultSchema = z.object({
+  order: orderSchema,
+  boxNumber: z.string(),
+  remaining: z.number(),
+  alreadyPicked: z.boolean().optional(),
+  alreadyReceived: z.boolean().optional(),
+})
+export type ScanResult = z.infer<typeof scanResultSchema>
+
+function useScan<TInput>(path: (orderId: string) => string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ orderId, input }: { orderId: string; input: TInput }): Promise<ScanResult> =>
+      parse(scanResultSchema, await apiClient.post(path(orderId), input)),
+    onSuccess: () => invalidateEverythingOrderTouches(queryClient),
+  })
+}
+
+/** One box scanned while picking (dispatch / destruction). Wrong box → refused and queued for a supervisor. */
+export function usePickBox() {
+  return useScan<{ barcode: string }>((id) => `/orders/${id}/pick`)
+}
+
+/** One returning box scanned for a collection; it waits at the warehouse's Goods-In until put away. */
+export function useReceiveReturnBox() {
+  return useScan<{ barcode: string; warehouseId?: string }>((id) => `/orders/${id}/receive`)
 }
 
 export { orderStatusSchema, orderTypeSchema }

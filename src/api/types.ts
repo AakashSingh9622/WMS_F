@@ -65,7 +65,8 @@ export const rackSchema = z.object({
 })
 export type Rack = z.infer<typeof rackSchema>
 
-export const slotStatusSchema = z.enum(["available", "full", "blocked"])
+// available / full = an active cell; blocked / quarantined / inactive = locked (no new boxes, the ones inside stay).
+export const slotStatusSchema = z.enum(["available", "full", "blocked", "quarantined", "inactive"])
 export type SlotStatus = z.infer<typeof slotStatusSchema>
 
 export const slotSchema = z.object({
@@ -101,6 +102,10 @@ export const boxStatusSchema = z.enum([
   "destroyed",
   "missing",
   "digitized",
+  "received", // at a warehouse's Goods-In, not on a shelf yet
+  "return_pending", // with the client, on an open collection that brings it back
+  "quarantined", // held back from every order until released
+  "permanently_withdrawn", // given back to the client for good
 ])
 export type BoxStatus = z.infer<typeof boxStatusSchema>
 
@@ -115,6 +120,8 @@ export const orderStatusSchema = z.enum([
   "approved",
   "scheduled",
   "in_progress",
+  "ready", // every box picked — waiting to be dispatched / destroyed
+  "on_hold", // paused by a supervisor; resume goes back to heldFromStatus
   "completed",
   "cancelled",
   "rejected",
@@ -149,6 +156,10 @@ export const boxSchema = z.object({
   missingReason: z.string().optional(),
   missingAt: z.string().optional(),
   digitizedAt: z.string().optional(),
+  goodsInWarehouseId: z.string().optional(), // status received: which warehouse's Goods-In
+  quarantineReason: z.string().optional(),
+  quarantinedAt: z.string().optional(),
+  retentionCategory: z.string().optional(), // retention rule code (Records → Retention rules)
   labelPrinted: z.boolean(),
   slotId: z.string().optional(),
   locationPath: locationPathSchema.optional(),
@@ -193,6 +204,9 @@ export const orderDestructionSchema = z.object({
   authorisedBy: z.string(),
   authorisedAt: z.string(),
   witness: z.string().optional(),
+  // second signature (records manager, not the person who prepared the order)
+  approvedBy: z.object({ id: z.string(), name: z.string() }).optional(),
+  approvedAt: z.string().optional(),
 })
 export type OrderDestruction = z.infer<typeof orderDestructionSchema>
 
@@ -235,6 +249,24 @@ export const orderSchema = z.object({
   destruction: orderDestructionSchema.optional(),
   digitization: orderDigitizationSchema.optional(),
   collection: orderCollectionSchema.optional(),
+  permanentWithdrawal: z.boolean().optional(), // dispatch: the boxes go back to the client for good
+  heldFromStatus: orderStatusSchema.optional(), // on_hold: where resume goes back to
+  holdReason: z.string().optional(),
+  // destruction asked for by an ordinary client contact: waits for the client's main contact (portal)
+  clientApprovalRequired: z.boolean().optional(),
+  clientApprovedBy: z.string().optional(),
+  clientApprovedAt: z.string().optional(),
+  delivery: z
+    .object({
+      recipientName: z.string().optional(),
+      courier: z.string().optional(),
+      trackingRef: z.string().optional(),
+      dispatchedAt: z.string().optional(),
+      receivedBy: z.string().optional(),
+      proofReference: z.string().optional(),
+      deliveredAt: z.string().optional(),
+    })
+    .optional(),
 })
 export type Order = z.infer<typeof orderSchema>
 
@@ -261,6 +293,14 @@ export const auditEventTypeSchema = z.enum([
   "hold_placed",
   "hold_released",
   "status_changed",
+  "quarantined",
+  "quarantine_released",
+  "relabelled",
+  "goods_in",
+  "legal_hold_placed",
+  "legal_hold_released",
+  "destruction_approved",
+  "contents_changed",
 ])
 export type AuditEventType = z.infer<typeof auditEventTypeSchema>
 

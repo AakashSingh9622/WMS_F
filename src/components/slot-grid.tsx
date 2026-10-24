@@ -5,12 +5,16 @@ import { useMemo, useRef, useState } from "react"
 import type { Slot } from "@/api/types"
 import { cn } from "@/lib/utils"
 import { capacityLevel, capacityPercent } from "@/lib/capacity"
+import { isLockedSlot } from "@/domain/status"
 
 const STATUS_FILL: Record<Slot["status"], string> = {
   available: "bg-card border-border hover:border-status-stored/60 hover:bg-status-stored/5",
   full: "bg-status-hold/5 border-status-hold/40 hover:border-status-hold/70",
   blocked:
     "bg-[repeating-linear-gradient(45deg,var(--muted),var(--muted)_4px,transparent_4px,transparent_8px)] border-border text-muted-foreground",
+  quarantined:
+    "bg-[repeating-linear-gradient(45deg,color-mix(in_oklab,var(--status-hold)_18%,transparent),color-mix(in_oklab,var(--status-hold)_18%,transparent)_4px,transparent_4px,transparent_8px)] border-status-hold/50 text-muted-foreground",
+  inactive: "bg-muted/60 border-dashed border-border text-muted-foreground opacity-70",
 }
 
 // Colour of the vertical gauge as the cell fills (same thresholds as the capacity bars).
@@ -124,7 +128,7 @@ export function SlotGrid({ rows, columns, slots, selectedSlotId, onSelectSlot, r
                       <span className="flex min-w-0 flex-1 flex-col justify-between">
                         <span className="text-muted-foreground text-[11px] font-medium tabular-nums">{slot.code}</span>
                         <span className="text-base leading-none font-semibold tabular-nums">
-                          {slot.status === "blocked" ? "—" : `${percent}%`}
+                          {isLockedSlot(slot.status) ? "—" : `${percent}%`}
                         </span>
                         <span className="text-muted-foreground text-[10px] leading-tight tabular-nums">
                           {slot.used}/{slot.capacity}
@@ -134,7 +138,7 @@ export function SlotGrid({ rows, columns, slots, selectedSlotId, onSelectSlot, r
                       </span>
 
                       {/* Vertical gauge: full height = the whole cell, fills from the bottom upwards. */}
-                      {slot.status !== "blocked" && (
+                      {!isLockedSlot(slot.status) && (
                         <span aria-hidden className="bg-muted relative w-3 shrink-0 overflow-hidden rounded-full">
                           <span
                             className={cn("absolute inset-x-0 bottom-0 rounded-full transition-all", LEVEL_FILL[level])}
