@@ -16,6 +16,8 @@ export type Permission =
   | "orders.authorise" // record a client's destruction / digitizing authorisation
   | "billing.view" // see invoices and the Sage settings
   | "billing.manage" // prepare invoices, send them to Sage, change the Sage settings
+  | "records.manage" // retention rules and legal holds
+  | "records.approve" // the second signature on a destruction (not the person who prepared it)
 
 const ALL: Permission[] = [
   "layout.manage",
@@ -29,6 +31,8 @@ const ALL: Permission[] = [
   "orders.authorise",
   "billing.view",
   "billing.manage",
+  "records.manage",
+  "records.approve",
 ]
 
 const ROLE_PERMISSIONS: Partial<Record<Role, Permission[]>> = {
@@ -44,7 +48,7 @@ const ROLE_PERMISSIONS: Partial<Record<Role, Permission[]>> = {
   ],
   operations_manager: ["audit.read", "boxes.operate", "orders.operate", "orders.approve", "orders.authorise"],
   staff_operator: ["boxes.operate", "orders.operate"],
-  records_manager: ["audit.read", "boxes.hold", "orders.authorise"],
+  records_manager: ["audit.read", "boxes.hold", "orders.authorise", "records.manage", "records.approve"],
   finance_manager: ["audit.read", "billing.view", "billing.manage"],
   auditor: ["audit.read", "billing.view"],
 }
@@ -75,7 +79,7 @@ export const ROLE_INFO: Partial<Record<Role, { label: string; description: strin
   },
   records_manager: {
     label: "Records manager",
-    description: "Holds, records client destruction/digitizing authorisations",
+    description: "Retention rules, legal holds, holds, second signature on destructions, client authorisations",
   },
   finance_manager: { label: "Finance manager", description: "Invoices and Sage, audit log" },
   auditor: { label: "Auditor", description: "Read-only, including the audit log and invoices" },

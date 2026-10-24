@@ -63,13 +63,37 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
           <h1 className="text-lg font-semibold">{order.orderNumber}</h1>
           <OrderTypeLabel type={order.type} />
           <OrderStatusBadge status={order.status} />
+          {order.permanentWithdrawal && <Badge variant="outline">Permanent withdrawal</Badge>}
         </div>
         <p className="text-muted-foreground text-sm">
           <Link href={`/app/clients/${order.clientId}`} className="hover:text-primary hover:underline">
             {order.clientName}
           </Link>
         </p>
-        <StatusStepper status={order.status} />
+        <StatusStepper status={order.status} heldFrom={order.heldFromStatus} />
+        {order.status === "on_hold" && order.holdReason && (
+          <p className="text-status-hold text-sm">On hold: {order.holdReason}</p>
+        )}
+        {order.clientApprovalRequired && !order.clientApprovedAt && (
+          <p className="text-status-hold text-sm">
+            Waiting for the client&apos;s main contact to approve this request in the portal before it can be approved
+            here.
+          </p>
+        )}
+        {order.clientApprovedAt && (
+          <p className="text-muted-foreground text-sm">
+            Approved by the client ({order.clientApprovedBy}) on {formatDateTime(order.clientApprovedAt)}
+          </p>
+        )}
+        {order.type === "destruction" &&
+          order.destruction &&
+          !order.destruction.approvedBy &&
+          order.status !== "completed" && (
+            <p className="text-muted-foreground text-sm">
+              Needs a second signature: a records manager who didn&apos;t prepare this order approves it before the
+              boxes can be destroyed.
+            </p>
+          )}
         <OrderActions order={order} />
       </div>
 
@@ -179,6 +203,12 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
                   <span className="text-muted-foreground">Authorised at</span>{" "}
                   {formatDate(order.destruction.authorisedAt)}
                 </p>
+                {order.destruction.approvedBy && (
+                  <p>
+                    <span className="text-muted-foreground">Approved by</span> {order.destruction.approvedBy.name}
+                    {order.destruction.approvedAt && ` on ${formatDate(order.destruction.approvedAt)}`}
+                  </p>
+                )}
                 {order.destruction.witness && (
                   <p>
                     <span className="text-muted-foreground">Witness</span> {order.destruction.witness}
@@ -239,7 +269,39 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
             </Card>
           )}
 
-          {order.status === "completed" && printDoc && (
+          {order.delivery && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Delivery</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 text-sm">
+                {order.delivery.courier && (
+                  <p>
+                    <span className="text-muted-foreground">Courier</span> {order.delivery.courier}
+                    {order.delivery.trackingRef && ` · ${order.delivery.trackingRef}`}
+                  </p>
+                )}
+                {order.delivery.dispatchedAt && (
+                  <p>
+                    <span className="text-muted-foreground">Dispatched</span>{" "}
+                    {formatDateTime(order.delivery.dispatchedAt)}
+                  </p>
+                )}
+                {order.delivery.receivedBy ? (
+                  <p>
+                    <span className="text-muted-foreground">Received by</span> {order.delivery.receivedBy}
+                    {order.delivery.deliveredAt && ` on ${formatDateTime(order.delivery.deliveredAt)}`}
+                    {order.delivery.proofReference && ` · proof ${order.delivery.proofReference}`}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground">Not confirmed as delivered yet.</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* the delivery note goes with the boxes, so it can be printed once they are picked (ready) */}
+          {printDoc && (order.status === "completed" || (order.type === "dispatch" && order.status === "ready")) && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Documents</CardTitle>

@@ -132,6 +132,48 @@ describe("describeAuditEvent (staff audience)", () => {
     expect(describeAuditEvent(baseEvent("hold_released")).text).toBe("Hold released by Ahmed Khan")
   })
 
+  it("quarantined", () => {
+    expect(describeAuditEvent(baseEvent("quarantined", { note: "Water damage" })).text).toBe(
+      "Quarantined by Ahmed Khan — Water damage",
+    )
+  })
+
+  it("quarantine_released", () => {
+    expect(describeAuditEvent(baseEvent("quarantine_released")).text).toBe("Released from quarantine by Ahmed Khan")
+  })
+
+  it("relabelled", () => {
+    expect(
+      describeAuditEvent(
+        baseEvent("relabelled", { changes: [{ field: "barcode", from: "BX00000002", to: "BX00000009" }], note: "Torn" }),
+      ).text,
+    ).toBe("Re-labelled by Ahmed Khan — BX00000002 → BX00000009 (Torn)")
+  })
+
+  it("goods_in", () => {
+    expect(
+      describeAuditEvent(baseEvent("goods_in", { toLocation: { warehouse: "WH1", rack: "Goods-In", slot: "—" } })).text,
+    ).toBe("Arrived at WH1 Goods-In, scanned by Ahmed Khan")
+  })
+
+  it("legal_hold_placed", () => {
+    expect(describeAuditEvent(baseEvent("legal_hold_placed", { note: "High Court: Case 123" })).text).toBe(
+      "Legal hold placed by Ahmed Khan — High Court: Case 123",
+    )
+  })
+
+  it("destruction_approved", () => {
+    expect(describeAuditEvent(baseEvent("destruction_approved", { orderNumber: "DST-000001" })).text).toBe(
+      "Destruction approved by Ahmed Khan for order DST-000001",
+    )
+  })
+
+  it("contents_changed", () => {
+    expect(describeAuditEvent(baseEvent("contents_changed", { note: "Added: VAT returns" })).text).toBe(
+      "Contents updated by Ahmed Khan — Added: VAT returns",
+    )
+  })
+
   it("status_changed", () => {
     expect(describeAuditEvent(baseEvent("status_changed")).text).toBe("Status changed by Ahmed Khan")
   })

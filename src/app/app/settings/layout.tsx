@@ -11,6 +11,7 @@ export default async function SettingsLayout({ children }: LayoutProps<"/app/set
     ...(allowed("layout.manage") ? [{ href: "/app/settings/warehouse-layout", label: "Warehouse layout" }] : []),
     ...(allowed("settings.manage") ? [{ href: "/app/settings/box-sizes", label: "Box sizes" }] : []),
     { href: "/app/settings/labels", label: "Labels" },
+    { href: "/app/settings/exports", label: "Exports" },
     ...(allowed("settings.manage") ? [{ href: "/app/settings/orders", label: "Orders" }] : []),
     ...(allowed("users.manage") ? [{ href: "/app/settings/users", label: "Users & roles" }] : []),
     ...(allowed("billing.view") ? [{ href: "/app/settings/sage", label: "Sage One" }] : []),

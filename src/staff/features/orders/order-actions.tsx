@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { todayISO } from "@/lib/formatting"
 import { useState } from "react"
 import { toast } from "sonner"
@@ -7,6 +8,7 @@ import { toast } from "sonner"
 import { useAuth } from "@/auth/useAuth"
 import { getOrderActions } from "@/domain/orders"
 import {
+  useApproveDestruction,
   useApproveOrder,
   useAuthoriseDestruction,
   useAuthoriseDigitization,
@@ -14,6 +16,9 @@ import {
   useCompleteOrder,
   useDestroyOrder,
   useDispatchOrder,
+  useHoldOrder,
+  useRecordDelivery,
+  useResumeOrder,
   useRejectOrder,
   useScheduleOrder,
   useStartOrder,
@@ -87,6 +92,70 @@ function TextFieldAction({
   )
 }
 
+/** A dialog with a few text fields (first one required unless marked optional) before firing a mutation. */
+function FieldsAction({
+  label,
+  title,
+  fields,
+  buttonVariant = "outline",
+  onSubmit,
+  isPending,
+}: {
+  label: string
+  title?: string
+  fields: { name: string; label: string; optional?: boolean }[]
+  buttonVariant?: "outline" | "default"
+  onSubmit: (values: Record<string, string | undefined>) => Promise<unknown>
+  isPending: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [values, setValues] = useState<Record<string, string>>({})
+  const ready = fields.every((f) => f.optional || (values[f.name] ?? "").trim())
+
+  async function submit() {
+    try {
+      const clean: Record<string, string | undefined> = {}
+      for (const f of fields) clean[f.name] = (values[f.name] ?? "").trim() || undefined
+      await onSubmit(clean)
+      setOpen(false)
+      setValues({})
+    } catch (err) {
+      onError(err)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant={buttonVariant} />}>{label}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title ?? label}</DialogTitle>
+        </DialogHeader>
+        <FieldGroup>
+          {fields.map((f) => (
+            <Field key={f.name}>
+              <FieldLabel htmlFor={`fa-${f.name}`}>
+                {f.label}
+                {f.optional ? " (optional)" : ""}
+              </FieldLabel>
+              <Input
+                id={`fa-${f.name}`}
+                value={values[f.name] ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
+              />
+            </Field>
+          ))}
+        </FieldGroup>
+        <DialogFooter>
+          <Button onClick={submit} disabled={!ready || isPending}>
+            {isPending ? "Saving…" : label}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function OrderActions({ order }: { order: Order }) {
   const { user } = useAuth()
   const actions = getOrderActions(order, user?.roles ?? [])
@@ -101,6 +170,10 @@ export function OrderActions({ order }: { order: Order }) {
   const authoriseDigitizing = useAuthoriseDigitization()
   const destroy = useDestroyOrder()
   const complete = useCompleteOrder()
+  const hold = useHoldOrder()
+  const approveDestruction = useApproveDestruction()
+  const recordDelivery = useRecordDelivery()
+  const resume = useResumeOrder()
 
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [scheduledFor, setScheduledFor] = useState(todayISO)
@@ -279,31 +352,110 @@ export function OrderActions({ order }: { order: Order }) {
       )}
 
       {actions.canDispatch && (
-        <TextFieldAction
+        <FieldsAction
           label="Dispatch"
-          fieldLabel="Recipient name"
+          title="Dispatch order"
+          fields={[
+            { name: "recipientName", label: "Recipient name" },
+            { name: "courier", label: "Courier", optional: true },
+            { name: "trackingRef", label: "Tracking reference", optional: true },
+          ]}
           isPending={dispatch.isPending}
-          onSubmit={(recipientName) => dispatch.mutateAsync({ orderId: order.id, input: { recipientName } })}
+          onSubmit={(v) =>
+            dispatch.mutateAsync({
+              orderId: order.id,
+              input: { recipientName: v.recipientName as string, courier: v.courier, trackingRef: v.trackingRef },
+            })
+          }
         />
       )}
 
+      {actions.canApproveDestruction && (
+        <Button
+          size="sm"
+          disabled={approveDestruction.isPending}
+          onClick={() =>
+            approveDestruction.mutate(
+              { orderId: order.id },
+              { onSuccess: () => toast.success("Destruction approved"), onError },
+            )
+          }
+        >
+          {approveDestruction.isPending ? "Approving…" : "Approve destruction (2nd signature)"}
+        </Button>
+      )}
+
       {actions.canDestroy && (
-        <TextFieldAction
+        <FieldsAction
           label="Mark destroyed"
-          fieldLabel="Witness (optional)"
-          optional
+          title="Confirm the boxes were destroyed"
+          fields={[
+            { name: "witness", label: "Witness", optional: true },
+            { name: "place", label: "Place of destruction", optional: true },
+          ]}
           isPending={destroy.isPending}
-          onSubmit={(witness) => destroy.mutateAsync({ orderId: order.id, input: { witness: witness || undefined } })}
+          onSubmit={(v) => destroy.mutateAsync({ orderId: order.id, input: { witness: v.witness, place: v.place } })}
         />
+      )}
+
+      {actions.canRecordDelivery && (
+        <FieldsAction
+          label="Record delivery"
+          title="Proof of delivery"
+          fields={[
+            { name: "receivedBy", label: "Received by" },
+            { name: "proofReference", label: "Proof reference (signature / POD number)", optional: true },
+          ]}
+          isPending={recordDelivery.isPending}
+          onSubmit={(v) =>
+            recordDelivery.mutateAsync({
+              orderId: order.id,
+              input: { receivedBy: v.receivedBy as string, proofReference: v.proofReference },
+            })
+          }
+        />
+      )}
+
+      {actions.canPick && (
+        <Button
+          size="sm"
+          variant="outline"
+          nativeButton={false}
+          render={<Link href={`/app/orders/${order.id}/pick`} />}
+        >
+          Pick (scan)
+        </Button>
+      )}
+
+      {actions.canReceive && (
+        <Button size="sm" nativeButton={false} render={<Link href={`/app/orders/${order.id}/receive`} />}>
+          Receive (scan)
+        </Button>
       )}
 
       {actions.canComplete && (
         <Button
           size="sm"
+          variant="outline"
           disabled={complete.isPending}
           onClick={() => complete.mutate({ orderId: order.id }, { onError })}
         >
           Complete
+        </Button>
+      )}
+
+      {actions.canHold && (
+        <TextFieldAction
+          label="Put on hold"
+          fieldLabel="Reason"
+          isPending={hold.isPending}
+          onSubmit={(reason) => hold.mutateAsync({ orderId: order.id, input: { reason } })}
+        />
+      )}
+
+      {actions.canResume && (
+        <Button size="sm" disabled={resume.isPending} onClick={() => resume.mutate({ orderId: order.id }, { onError })}>
+          Resume
         </Button>
       )}
 

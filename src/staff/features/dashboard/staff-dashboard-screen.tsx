@@ -26,6 +26,7 @@ import { formatDate } from "@/lib/formatting"
 import { cn } from "@/lib/utils"
 import { AuditTimeline } from "@/components/audit-timeline"
 import { Skeleton } from "@/components/ui/skeleton"
+import { StaffUpdates } from "@/staff/features/dashboard/staff-updates"
 
 // Only the latest few events live on the dashboard (so the page stays short); the full history is the Audit log.
 const RECENT_ACTIVITY_COUNT = 6
@@ -47,6 +48,20 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: "Register boxes",
     hint: "Add boxes & print labels",
     icon: PackagePlus,
+    permission: "boxes.operate",
+  },
+  {
+    href: "/app/boxes/receive",
+    label: "Goods-In",
+    hint: "Scan arriving boxes",
+    icon: ORDER_TYPE_META.collection.icon,
+    permission: "boxes.operate",
+  },
+  {
+    href: "/app/boxes/put-away",
+    label: "Put away",
+    hint: "Scan box, then slot",
+    icon: ORDER_TYPE_META.dispatch.icon,
     permission: "boxes.operate",
   },
   {
@@ -420,25 +435,28 @@ export function StaffDashboardScreen() {
           )}
         </section>
 
-        <section aria-labelledby="recent-activity" className="space-y-3">
-          <div className="flex items-end justify-between gap-3">
-            <h2 id="recent-activity" className="text-sm font-semibold">
-              Recent activity
-            </h2>
-            {canReadAudit && (
-              <Link href="/app/audit" className="text-primary text-xs underline-offset-4 hover:underline">
-                View all
-              </Link>
-            )}
-          </div>
-          <div className="bg-card rounded-2xl border p-4">
-            {loadingActivity ? (
-              <Skeleton className="h-48 w-full" />
-            ) : (
-              <AuditTimeline events={recentActivity?.items ?? []} orderHref={(id) => `/app/orders/${id}`} />
-            )}
-          </div>
-        </section>
+        <div className="space-y-6">
+          <StaffUpdates />
+          <section aria-labelledby="recent-activity" className="space-y-3">
+            <div className="flex items-end justify-between gap-3">
+              <h2 id="recent-activity" className="text-sm font-semibold">
+                Recent activity
+              </h2>
+              {canReadAudit && (
+                <Link href="/app/audit" className="text-primary text-xs underline-offset-4 hover:underline">
+                  View all
+                </Link>
+              )}
+            </div>
+            <div className="bg-card rounded-2xl border p-4">
+              {loadingActivity ? (
+                <Skeleton className="h-48 w-full" />
+              ) : (
+                <AuditTimeline events={recentActivity?.items ?? []} orderHref={(id) => `/app/orders/${id}`} />
+              )}
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   )

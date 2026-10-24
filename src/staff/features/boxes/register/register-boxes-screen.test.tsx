@@ -25,6 +25,7 @@ vi.mock("@/api/settings", () => ({ useBoxLengths: () => ({ standard: 40, large: 
 vi.mock("@/api/boxes", () => ({
   useCreateBoxesBatch: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
+vi.mock("@/api/records", () => ({ useRetentionRules: () => ({ data: [] }) }))
 vi.mock("@/store/docusoftApi", () => ({
   useGetClientsWithDetailsQuery: () => ({ data: [{ ClientId: "C1", Client: "CR PROPOSALS 0003" }] }),
 }))

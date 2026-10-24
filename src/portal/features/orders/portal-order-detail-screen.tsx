@@ -42,7 +42,7 @@ export function PortalOrderDetailScreen({ orderId }: { orderId: string }) {
           <h1 className="text-xl font-semibold">{order.orderNumber}</h1>
           <OrderTypeLabel type={order.type} />
         </div>
-        <StatusStepper status={order.status} />
+        <StatusStepper status={order.status} heldFrom={order.heldFromStatus} />
       </div>
 
       <Card>

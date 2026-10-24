@@ -12,6 +12,7 @@ import type { RackRowStats } from "@/api/warehouses"
 import type { Box, Rack, Slot } from "@/api/types"
 import { formatLength, toCentimetres, type LengthUnit } from "@/domain/dimensions"
 import { capacityLevel, capacityPercent } from "@/lib/capacity"
+import { LOCKED_SLOT_STATUSES, SLOT_LOCK_LABEL, isLockedSlot, type SlotLock } from "@/domain/status"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -52,6 +53,8 @@ interface RackRow {
   boxCount: number
   onOrder: boolean
   state: "empty" | "in-use" | "full" | "blocked"
+  /** The lock every cell of the row shares (blocked / quarantined / inactive), or undefined if active or mixed. */
+  lock?: SlotLock
 }
 
 function buildRows(slots: Slot[], stats: RackRowStats[]): RackRow[] {
@@ -64,14 +67,19 @@ function buildRows(slots: Slot[], stats: RackRowStats[]): RackRow[] {
     .map(([row, rowSlots]) => {
       const used = rowSlots.reduce((sum, s) => sum + s.used, 0)
       const capacity = rowSlots.reduce((sum, s) => sum + s.capacity, 0)
-      const blockedCells = rowSlots.filter((s) => s.status === "blocked").length
+      const blockedCells = rowSlots.filter((s) => isLockedSlot(s.status)).length // locked: no new boxes
       const fullCells = rowSlots.filter((s) => s.status === "full").length
       const rowStats = statsByRow.get(row)
       const usable = rowSlots.length - blockedCells
       const state: RackRow["state"] =
         usable === 0 ? "blocked" : fullCells === usable ? "full" : used > 0 ? "in-use" : "empty"
+      const lock =
+        rowSlots.every((s) => s.status === rowSlots[0]?.status) && isLockedSlot(rowSlots[0]?.status)
+          ? (rowSlots[0].status as SlotLock)
+          : undefined
       return {
         row,
+        lock,
         slots: rowSlots,
         used,
         capacity,
@@ -226,20 +234,20 @@ function SelectedRowPanel({
   boxes,
   canManageLayout,
   loadingBoxes,
-  onToggleBlocked,
+  onSetLock,
   togglePending,
 }: {
   row: RackRow
   boxes: Box[]
   canManageLayout: boolean
   loadingBoxes: boolean
-  onToggleBlocked: () => void
+  onSetLock: (lock: SlotLock | "active") => void
   togglePending: boolean
 }) {
   const percent = capacityPercent(row.used, row.capacity)
   const level = capacityLevel(row.used, row.capacity)
-  const badge = STATE_BADGE[row.state]
-  const canBlock = row.used === 0 // a blocked cell holds nothing, so only an empty row can be blocked
+  const badge = row.lock ? { ...STATE_BADGE.blocked, label: SLOT_LOCK_LABEL[row.lock] } : STATE_BADGE[row.state]
+  const lockValue = row.lock ?? (row.blockedCells > 0 ? "mixed" : "active")
 
   return (
     <Card className="[--card-spacing:--spacing(5)] h-full">
@@ -308,19 +316,34 @@ function SelectedRowPanel({
           )}
         </div>
 
-        <div className="mt-auto flex gap-2">
+        <div className="mt-auto space-y-1.5">
           {canManageLayout && (
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={onToggleBlocked}
-              disabled={togglePending || (row.state !== "blocked" && !canBlock)}
-              title={
-                row.state !== "blocked" && !canBlock ? "Move the boxes out of this row before blocking it" : undefined
-              }
-            >
-              {row.state === "blocked" ? "Unblock row" : "Block row"}
-            </Button>
+            <>
+              <p className="text-muted-foreground text-xs">
+                Row state — locked rows take no new boxes; boxes inside stay
+              </p>
+              <Select
+                value={lockValue}
+                disabled={togglePending}
+                onValueChange={(v) => v && v !== "mixed" && onSetLock(v as SlotLock | "active")}
+              >
+                <SelectTrigger className="w-full" aria-label="Row state">
+                  <SelectValue
+                    getLabel={(v) =>
+                      v === "active" ? "Active" : v === "mixed" ? "Mixed" : SLOT_LOCK_LABEL[v as SlotLock]
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  {LOCKED_SLOT_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {SLOT_LOCK_LABEL[s]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
           )}
         </div>
       </CardContent>
@@ -357,24 +380,26 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
   const onOrderRows = rows.filter((r) => r.onOrder).length
   const usedPercent = capacityPercent(totalUsed, totalCapacity)
 
-  async function toggleBlocked(row: RackRow) {
-    const blocking = row.state !== "blocked"
+  // Sets every cell of the row to one state. "active" unlocks (the backend works out available / full itself).
+  async function setRowLock(row: RackRow, lock: SlotLock | "active") {
     try {
       await Promise.all(
         row.slots
-          .filter((s) => (blocking ? s.status !== "blocked" : s.status === "blocked"))
+          .filter((s) => (lock === "active" ? isLockedSlot(s.status) : s.status !== lock))
           .map((s) =>
             updateSlot.mutateAsync({
               slotId: s.id,
               rackId,
               warehouseId,
-              status: blocking ? "blocked" : s.used >= s.capacity ? "full" : "available",
+              status: lock === "active" ? (s.used >= s.capacity ? "full" : "available") : lock,
             }),
           ),
       )
-      toast.success(blocking ? `Row ${row.row} blocked` : `Row ${row.row} unblocked`)
-    } catch {
-      toast.error("Couldn't update the row")
+      toast.success(
+        lock === "active" ? `Row ${row.row} is active again` : `Row ${row.row}: ${SLOT_LOCK_LABEL[lock].toLowerCase()}`,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't update the row")
     }
   }
 
@@ -526,7 +551,7 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
             boxes={rowBoxes?.items ?? []}
             canManageLayout={canManageLayout}
             loadingBoxes={loadingBoxes}
-            onToggleBlocked={() => toggleBlocked(selectedRow)}
+            onSetLock={(lock) => setRowLock(selectedRow, lock)}
             togglePending={updateSlot.isPending}
           />
         )}

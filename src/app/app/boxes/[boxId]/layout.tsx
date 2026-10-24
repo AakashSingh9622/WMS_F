@@ -10,6 +10,7 @@ export default async function BoxDetailLayout({ children, params }: LayoutProps<
       <TabNav
         items={[
           { href: `/app/boxes/${boxId}`, label: "Overview" },
+          { href: `/app/boxes/${boxId}/contents`, label: "Contents" },
           { href: `/app/boxes/${boxId}/history`, label: "History" },
           { href: `/app/boxes/${boxId}/orders`, label: "Orders" },
         ]}
