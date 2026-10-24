@@ -5,7 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useDispatch } from "react-redux"
 
 import { SESSION_COOKIE } from "@/auth/session-shared"
-import { clearDocusoftCredentials, storeDocusoftCredentials } from "@/store/docusoftCreds"
+import { DOCUSOFT_BASE_URL } from "@/store/docusoftConfig"
+import { clearDocusoftCredentials, getDocusoftCredentials, storeDocusoftCredentials } from "@/store/docusoftCreds"
 import { docusoftApi } from "@/store/docusoftApi"
 import { clientsUiReset } from "@/store/clientsUiSlice"
 import type { Role } from "@/api/types"
@@ -32,6 +33,24 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+
+// DocuSoft's own display name for the user — Json_GetUserDetails returns {"Table":[{UserName, ...}]}.
+// Best-effort: a failure here must never block login, the UI just falls back to the email.
+async function fetchDocusoftUserName(agrno: string, email: string, encodedPassword: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(`${DOCUSOFT_BASE_URL}/Json_GetUserDetails`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ agrno, Email: email, password: encodedPassword, stremail: email }),
+    })
+    if (!res.ok) return undefined
+    const wrapper = (await res.json()) as { d?: string }
+    const data = wrapper.d ? (JSON.parse(wrapper.d) as { Table?: { UserName?: string }[] }) : {}
+    return data.Table?.[0]?.UserName?.trim() || undefined
+  } catch {
+    return undefined
+  }
+}
 
 async function fetchMe(): Promise<AuthUser | null> {
   const res = await fetch("/api/auth/me")
@@ -81,11 +100,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Fresh login (maybe a different account in the same tab) — never reuse another user's cache.
         dispatch(docusoftApi.util.resetApiState())
         dispatch(clientsUiReset())
-        storeDocusoftCredentials({
-          agrno: data.agrno,
-          Email: input.email,
-          password: btoa(input.password),
-        })
+        const password = btoa(input.password)
+        const userName = await fetchDocusoftUserName(data.agrno, input.email, password)
+        storeDocusoftCredentials({ agrno: data.agrno, Email: input.email, password, userName })
+        if (userName) return { ...data.user, name: userName }
       }
       return data.user
     },
@@ -111,7 +129,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => logoutMutation.mutateAsync(), [logoutMutation])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user: meQuery.data, isLoading: meQuery.isLoading, login, logout }),
+    () => {
+      // Show DocuSoft's UserName (stored at login) wherever the app shows the user's name; /me alone only knows the email.
+      const userName = meQuery.data?.side === "staff" ? getDocusoftCredentials()?.userName : undefined
+      const user = meQuery.data && userName ? { ...meQuery.data, name: userName } : meQuery.data
+      return { user, isLoading: meQuery.isLoading, login, logout }
+    },
     [meQuery.data, meQuery.isLoading, login, logout],
   )
 

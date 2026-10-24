@@ -7,6 +7,8 @@ export interface DocusoftCreds {
   agrno: string
   Email: string
   password: string // already base64-encoded, same form DocuSoft's API expects
+  /** DocuSoft's display name for this user (Json_GetUserDetails -> Table[0].UserName), fetched at login. */
+  userName?: string
 }
 
 /** Called once, right after login — this is the only place a password is ever stored. */
