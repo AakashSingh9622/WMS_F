@@ -16,6 +16,10 @@ const nextConfig: NextConfig = {
       { source: "/api/warehouses/:path*", destination: `${BACKEND_API_URL}/api/warehouses/:path*` },
       { source: "/api/racks/:path*", destination: `${BACKEND_API_URL}/api/racks/:path*` },
       { source: "/api/slots/:path*", destination: `${BACKEND_API_URL}/api/slots/:path*` },
+      // Optional zones / aisles on racks, and "find a location by code" (Sprint 10).
+      { source: "/api/zones/:path*", destination: `${BACKEND_API_URL}/api/zones/:path*` },
+      { source: "/api/aisles/:path*", destination: `${BACKEND_API_URL}/api/aisles/:path*` },
+      { source: "/api/locations/:path*", destination: `${BACKEND_API_URL}/api/locations/:path*` },
       { source: "/api/boxes", destination: `${BACKEND_API_URL}/api/boxes` },
       { source: "/api/boxes/:path*", destination: `${BACKEND_API_URL}/api/boxes/:path*` },
       { source: "/api/orders", destination: `${BACKEND_API_URL}/api/orders` },

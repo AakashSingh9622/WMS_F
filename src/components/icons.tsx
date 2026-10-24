@@ -70,6 +70,9 @@ export const MATERIAL_ICON_NAMES = [
   "light_mode",
   "person",
   "pin_drop",
+  "print",
+  "barcode_scanner",
+  "photo_camera",
   "playlist_add_check",
   "receipt_long",
   "request_quote",
@@ -130,6 +133,9 @@ export const PackageOpen = make("unarchive")
 export const PackagePlus = make("add_box")
 export const PanelLeftIcon = make("left_panel_open")
 export const Pencil = make("edit")
+export const Printer = make("print")
+export const BarcodeScanner = make("barcode_scanner")
+export const Camera = make("photo_camera")
 export const ScrollText = make("receipt_long")
 export const Invoice = make("request_quote")
 export const Search = make("search")

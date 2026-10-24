@@ -16,8 +16,9 @@ const PAGE_SIZE = 25
 
 const TABS: { value: string; label: string; statuses?: OrderStatus[] }[] = [
   { value: "needs-approval", label: "Needs approval", statuses: ["requested"] },
+  { value: "billing", label: "Billing", statuses: ["billing"] },
   { value: "scheduled", label: "Scheduled", statuses: ["approved", "scheduled"] },
-  { value: "in-progress", label: "In progress", statuses: ["in_progress"] },
+  { value: "in-progress", label: "In progress", statuses: ["in_progress", "ready"] },
   { value: "completed", label: "Completed", statuses: ["completed"] },
   { value: "all", label: "All" },
 ]

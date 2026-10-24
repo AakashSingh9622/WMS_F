@@ -49,6 +49,7 @@ export const routeLabels: Record<string, string> = {
   charges: "Charges",
   runs: "Billing runs",
   "rate-cards": "Rate cards",
+  accounts: "Accounts",
   records: "Records",
   holds: "Legal holds",
   rules: "Retention rules",

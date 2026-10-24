@@ -3,6 +3,7 @@
 import { useState } from "react"
 
 import { usePutAway } from "@/api/boxes"
+import { locationText } from "@/domain/location"
 import { ArrowUpFromLine } from "@/components/icons"
 import { PageHeader } from "@/components/page-header"
 import { ScanInput, ScanLog, useScanLog } from "@/components/scan-input"
@@ -10,8 +11,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
 /**
- * Put-away by barcode (spec §6.1): scan the box, then the slot label on the shelf. A box at Goods-In, a registered box
- * or a box being moved all work the same way. Anything that doesn't fit is refused and goes to the supervisor queue.
+ * Put-away by barcode (spec §6.1): scan the box, then the position label — or scan / type a shelf code ("B04-3") and the
+ * backend picks the best-fitting position on that shelf. A box at Goods-In, a registered box or a box being moved all
+ * work the same way. Anything that doesn't fit is refused and goes to the supervisor queue.
  */
 export function PutAwayScreen() {
   const putAway = usePutAway()
@@ -26,10 +28,7 @@ export function PutAwayScreen() {
     try {
       const res = await putAway.mutateAsync({ boxBarcode: boxCode, slotBarcode: code })
       const at = res.box.locationPath
-      log.add(
-        true,
-        `${res.box.boxNumber} → ${at ? `${at.warehouse} › ${at.rack} › ${at.slot}` : code} (${res.slot.used}/${res.slot.capacity} cm)`,
-      )
+      log.add(true, `${res.box.boxNumber} → ${at ? locationText(at) : code} (${res.slot.used}/${res.slot.capacity} cm)`)
     } catch (err) {
       log.add(false, `${boxCode} → ${code}: ${err instanceof Error ? err.message : "not put away"}`)
     } finally {
@@ -42,14 +41,15 @@ export function PutAwayScreen() {
       <PageHeader
         icon={ArrowUpFromLine}
         title="Put away"
-        description="Scan a box, then the slot label where you put it."
+        description="Scan a box, then the position label — or a shelf code like B04-3."
       />
       <Card>
         <CardContent className="space-y-3 pt-6">
           <p className="text-sm font-medium">
             {boxCode ? (
               <>
-                Box <span className="font-mono">{boxCode}</span> — now scan the <strong>slot</strong>
+                Box <span className="font-mono">{boxCode}</span> — now scan the <strong>position</strong> or type the
+                shelf code
               </>
             ) : (
               <>
@@ -57,7 +57,7 @@ export function PutAwayScreen() {
               </>
             )}
           </p>
-          <ScanInput label={boxCode ? "Slot barcode" : "Box barcode"} onScan={scan} />
+          <ScanInput label={boxCode ? "Position barcode or shelf code" : "Box barcode"} onScan={scan} />
           {boxCode && (
             <Button variant="ghost" size="sm" onClick={() => setBoxCode(null)}>
               Start again

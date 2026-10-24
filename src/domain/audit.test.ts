@@ -38,7 +38,14 @@ describe("describeAuditEvent (staff audience)", () => {
     const text = describeAuditEvent(
       baseEvent("allocated", { toLocation: { warehouse: "WH1", rack: "B-04", slot: "3-2" } }),
     ).text
-    expect(text).toBe("Filed in WH1 › Rack B-04 › Slot 3-2 by Ahmed Khan")
+    expect(text).toBe("Filed in WH1 › Rack B-04 › Shelf 3 · Position 2 by Ahmed Khan")
+  })
+
+  it("allocated — with zone and aisle (Sprint 10 snapshot)", () => {
+    const toLocation = { warehouse: "WH1", zone: "A", aisle: "3", rack: "B04", slot: "3-2", shelf: 3, position: 2 }
+    expect(describeAuditEvent(baseEvent("allocated", { toLocation })).text).toBe(
+      "Filed in WH1 › Zone A › Aisle 3 › Rack B04 › Shelf 3 · Position 2 by Ahmed Khan",
+    )
   })
 
   it("moved — with a note", () => {
@@ -50,7 +57,9 @@ describe("describeAuditEvent (staff audience)", () => {
         note: "rack B-04 maintenance",
       }),
     ).text
-    expect(text).toBe("Moved from WH1 › Rack B-04 › Slot 3-2 to WH1 › Rack C-01 › Slot 1-4 by Sara Ali — note: rack B-04 maintenance")
+    expect(text).toBe(
+      "Moved from WH1 › Rack B-04 › Shelf 3 · Position 2 to WH1 › Rack C-01 › Shelf 1 · Position 4 by Sara Ali — note: rack B-04 maintenance",
+    )
   })
 
   it("details_edited — with changes", () => {
@@ -64,9 +73,7 @@ describe("describeAuditEvent (staff audience)", () => {
   })
 
   it("added_to_order — via portal", () => {
-    const text = describeAuditEvent(
-      baseEvent("added_to_order", { actor: clientActor, orderNumber: "DSP-000207" }),
-    ).text
+    const text = describeAuditEvent(baseEvent("added_to_order", { actor: clientActor, orderNumber: "DSP-000207" })).text
     expect(text).toBe("Added to order DSP-000207 (dispatch) by client user John Smith via portal")
   })
 
@@ -101,7 +108,7 @@ describe("describeAuditEvent (staff audience)", () => {
     const text = describeAuditEvent(
       baseEvent("refiled", { toLocation: { warehouse: "WH1", rack: "B-04", slot: "3-2" } }),
     ).text
-    expect(text).toBe("Refiled in WH1 › Rack B-04 › Slot 3-2 by Ahmed Khan")
+    expect(text).toBe("Refiled in WH1 › Rack B-04 › Shelf 3 · Position 2 by Ahmed Khan")
   })
 
   it("marked_missing — with a note", () => {
@@ -117,7 +124,11 @@ describe("describeAuditEvent (staff audience)", () => {
 
   it("destroyed — with method and witness", () => {
     const text = describeAuditEvent(
-      baseEvent("destroyed", { orderNumber: "DST-000123", note: "shred", changes: [{ field: "witness", to: "R. Patel" }] }),
+      baseEvent("destroyed", {
+        orderNumber: "DST-000123",
+        note: "shred",
+        changes: [{ field: "witness", to: "R. Patel" }],
+      }),
     ).text
     expect(text).toBe("Destroyed (shred) as per order DST-000123 — witnessed by R. Patel")
   })
@@ -145,7 +156,10 @@ describe("describeAuditEvent (staff audience)", () => {
   it("relabelled", () => {
     expect(
       describeAuditEvent(
-        baseEvent("relabelled", { changes: [{ field: "barcode", from: "BX00000002", to: "BX00000009" }], note: "Torn" }),
+        baseEvent("relabelled", {
+          changes: [{ field: "barcode", from: "BX00000002", to: "BX00000009" }],
+          note: "Torn",
+        }),
       ).text,
     ).toBe("Re-labelled by Ahmed Khan — BX00000002 → BX00000009 (Torn)")
   })

@@ -19,6 +19,8 @@ export const SAGE_CONFIG = {
   redirectUri: "https://accountancy.mydocusoft.com/account/sageOneRedirect.html",
   redirectOrigin: "https://accountancy.mydocusoft.com",
   appBase: "https://accounts-extra.sageone.com",
+  // Where a practice admin switches the active accounting system (Practice → Settings → Integrations).
+  practiceSettingsUrl: "https://accountancy.mydocusoft.com/account/settings.html",
 }
 
 export class SageError extends Error {
@@ -32,6 +34,9 @@ export class SageError extends Error {
 
 /** Thrown when there's no usable Sage sign-in in this browser — the UI shows "Connect to Sage". */
 export const NOT_CONNECTED = "not_connected"
+
+/** Thrown when Sage One isn't the practice's active accounting system — the UI shows the admin / non-admin warning. */
+export const SAGE_NOT_ACTIVE = "sage_not_active"
 
 // --- Sage app key/secret (DocuSoft) -----------------------------------------------------------------------------
 
@@ -59,6 +64,35 @@ async function getAppCredentials(): Promise<SageAppCredentials> {
   }
   appCredentials = { clientId, clientSecret }
   return appCredentials
+}
+
+// --- Practice's active accounting system --------------------------------------------------------------------------
+
+export type AccountingSystem = "Xero" | "QuickBooks" | "Gusto" | "SageOne" | "SilverFin"
+
+const isOn = (v: unknown) => v === true || v === 1 || String(v).toLowerCase() === "true"
+
+/**
+ * The practice's active accounting system (null = none), read from DocuSoft's Json_GetXeroQBDetails with the same flags,
+ * in the same order, as Practice's settings page (thirdPartIntegration.js). Read fresh every time: an admin may switch
+ * it in Practice and come straight back to try again.
+ */
+export async function getActiveAccountingSystem(): Promise<AccountingSystem | null> {
+  const row = tableRows(await callDocusoft("Json_GetXeroQBDetails"))[0]
+  if (!row) return null
+  if (isOn(row.IsXero)) return "Xero"
+  if (isOn(row.IsQB)) return "QuickBooks"
+  if (isOn(row.IsGusto)) return "Gusto"
+  if (isOn(row.IsSageOne)) return "SageOne"
+  if (isOn(row.IsSilverFin)) return "SilverFin"
+  return null
+}
+
+/** Stops with SAGE_NOT_ACTIVE unless Sage One is the practice's active accounting system. */
+export async function assertSageOneIsActive(): Promise<void> {
+  if ((await getActiveAccountingSystem()) !== "SageOne") {
+    throw new SageError("Sage One is not your practice's active accounting system", SAGE_NOT_ACTIVE)
+  }
 }
 
 // --- Tokens (this browser) ------------------------------------------------------------------------------------------
@@ -237,6 +271,36 @@ export async function connectSage(): Promise<void> {
 interface SageErrorItem {
   $message?: string
   $dataCode?: string
+  $source?: string // the field Sage means, e.g. "main_address.address_line_1" or "invoice_lines.0.ledger_account_id"
+}
+
+const FIELD_LABEL: Record<string, string> = {
+  address_line_1: "address line 1",
+  postal_code: "postcode",
+  contact_id: "client (Sage contact)",
+  ledger_account_id: "ledger account",
+  tax_rate_id: "VAT rate",
+  unit_price: "unit price",
+  due_date: "due date",
+  contact_type_ids: "contact type",
+}
+
+/** "main_address.address_line_1" -> "address line 1 (main address)", "invoice_lines.0.unit_price" -> "unit price (line 1)". */
+function fieldLabel(source: string): string {
+  const parts = source.split(".")
+  const field = parts[parts.length - 1]
+  const label = FIELD_LABEL[field] ?? field.replace(/_/g, " ")
+  const line = parts.findIndex((p) => /^\d+$/.test(p))
+  if (line > 0) return `${label} (line ${Number(parts[line]) + 1})`
+  return parts.length > 1 ? `${label} (${parts[0].replace(/_/g, " ")})` : label
+}
+
+/** Every error Sage returned, each with the field it is about — "This field is required" alone doesn't say which. */
+function errorText(errors: SageErrorItem[]): string {
+  const texts = errors
+    .filter((e) => e.$message)
+    .map((e) => (e.$source ? `${e.$message!.replace(/\.$/, "")}: ${fieldLabel(e.$source)}` : e.$message!))
+  return [...new Set(texts)].join("; ")
 }
 
 function errorItems(json: unknown): SageErrorItem[] {
@@ -264,8 +328,7 @@ async function proxyPost(api: string, body: Record<string, unknown>): Promise<un
   const json = await res.json().catch(() => null)
   const errors = errorItems(json)
   if (!res.ok || (json as { status?: boolean } | null)?.status === false || errors.length > 0) {
-    const first = errors[0]
-    throw new SageError(first?.$message || `Sage request failed (${api}, HTTP ${res.status})`, first?.$dataCode)
+    throw new SageError(errorText(errors) || `Sage request failed (${api}, HTTP ${res.status})`, errors[0]?.$dataCode)
   }
   return json
 }
@@ -416,6 +479,8 @@ export interface SageInvoiceRef {
   id: string
   invoiceNumber?: string
   link: string
+  totalAmount?: number // incl. VAT, as Sage worked it out
+  currency?: string
 }
 
 interface SageInvoiceData {
@@ -425,6 +490,8 @@ interface SageInvoiceData {
   reference?: string
   status?: { displayed_as?: string }
   links?: { rel?: string; href?: string }[]
+  total_amount?: number | string
+  currency?: { id?: string }
 }
 
 function invoiceRef(data: SageInvoiceData): SageInvoiceRef {
@@ -434,6 +501,11 @@ function invoiceRef(data: SageInvoiceData): SageInvoiceRef {
     invoiceNumber: data.invoice_number || undefined,
     link:
       data.links?.find((l) => l.rel === "alternate")?.href ?? `${SAGE_CONFIG.appBase}/invoicing/sales_invoices/${id}`,
+    totalAmount:
+      Number.isFinite(Number(data.total_amount)) && data.total_amount !== undefined
+        ? Number(data.total_amount)
+        : undefined,
+    currency: data.currency?.id || undefined,
   }
 }
 
@@ -456,6 +528,53 @@ export async function findSageInvoiceByReference(
   })
   const hit = (data?.$items ?? []).find((i) => i.id && i.reference === reference && i.status?.displayed_as !== "Void")
   return hit ? invoiceRef(hit) : null
+}
+
+/**
+ * Total and outstanding amount of Sage invoices, for "Update from Sage" (standing accounts). Reads each contact's sales
+ * invoices page by page (the same getSalesInvoices call as above) from the earliest invoice date asked for.
+ */
+export async function getSageInvoiceAmounts(
+  invoices: { sageInvoiceId: string; sageContactId?: string; invoiceDate: string }[],
+): Promise<Map<string, { totalAmount: number; outstandingAmount: number }>> {
+  const business = await getSageBusiness()
+  const found = new Map<string, { totalAmount: number; outstandingAmount: number }>()
+  const byContact = new Map<string, { ids: Set<string>; from: string }>()
+  for (const inv of invoices) {
+    if (!inv.sageContactId) continue
+    const c = byContact.get(inv.sageContactId) ?? { ids: new Set<string>(), from: inv.invoiceDate }
+    c.ids.add(inv.sageInvoiceId)
+    if (inv.invoiceDate < c.from) c.from = inv.invoiceDate
+    byContact.set(inv.sageContactId, c)
+  }
+  for (const [contactId, { ids, from }] of byContact) {
+    for (let page = 1; page <= 20 && [...ids].some((id) => !found.has(id)); page++) {
+      const data = await sagePost<{ $items?: (SageInvoiceData & { outstanding_amount?: number | string })[] }>(
+        "getSalesInvoices",
+        {
+          business_id: business.id,
+          items_per_page: 100,
+          page,
+          search: "",
+          contact_id: contactId,
+          from_date: from,
+          to_date: "",
+          attributes: "all",
+          sort: "date",
+        },
+      )
+      const items = data?.$items ?? []
+      for (const i of items) {
+        if (!i.id || !ids.has(i.id)) continue
+        const total = Number(i.total_amount)
+        const outstanding = Number(i.outstanding_amount)
+        if (Number.isFinite(total) && Number.isFinite(outstanding))
+          found.set(i.id, { totalAmount: total, outstandingAmount: outstanding })
+      }
+      if (items.length < 100) break
+    }
+  }
+  return found
 }
 
 export async function createSageInvoice(input: SageInvoiceInput): Promise<SageInvoiceRef> {

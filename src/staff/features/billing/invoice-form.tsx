@@ -14,6 +14,7 @@ import {
   type InvoiceLineKind,
 } from "@/api/invoices"
 import { SAGE_TAX_RATES } from "@/api/sage"
+import type { Order } from "@/api/types"
 import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 import { addDaysISO, formatMoney, todayISO } from "@/lib/formatting"
 import { Button } from "@/components/ui/button"
@@ -60,26 +61,62 @@ function lastMonth(): { from: string; to: string } {
   return { from, to: addDaysISO(`${y}-${String(m).padStart(2, "0")}-01`, -1) }
 }
 
-export function InvoiceForm({ invoice, initialClientId }: { invoice?: Invoice; initialClientId?: string }) {
+/** The invoice line kind for an order's own invoice. */
+const KIND_FOR_ORDER: Record<Order["type"], InvoiceLineKind> = {
+  dispatch: "dispatch",
+  collection: "collection",
+  destruction: "destruction",
+  digitize: "digitize",
+}
+
+/**
+ * New / edit invoice. With `order` (billing stage, new invoice) the client is the order's, there is no period to
+ * suggest from and the staff type the lines (phase 1 — prefilling them from the rate card comes later).
+ */
+export function InvoiceForm({
+  invoice,
+  initialClientId,
+  order,
+}: {
+  invoice?: Invoice
+  initialClientId?: string
+  order?: Pick<Order, "id" | "orderNumber" | "type" | "clientId" | "clientName" | "boxCount">
+}) {
   const router = useRouter()
   const save = useSaveInvoice()
   const { data: clients } = useGetClientsWithDetailsQuery()
   const { data: settings } = useSageSettings()
   const period = lastMonth()
 
-  const [clientId, setClientId] = useState(invoice?.clientId ?? initialClientId ?? "")
+  const forOrder = !!order || !!invoice?.orderId // an order's invoice stays with the order's client
+  const [clientId, setClientId] = useState(invoice?.clientId ?? order?.clientId ?? initialClientId ?? "")
   const [periodFrom, setPeriodFrom] = useState(invoice?.periodFrom ?? period.from)
   const [periodTo, setPeriodTo] = useState(invoice?.periodTo ?? period.to)
   const [invoiceDate, setInvoiceDate] = useState(invoice?.invoiceDate ?? todayISO())
   const [dueDate, setDueDate] = useState(invoice?.dueDate ?? "")
   const [notes, setNotes] = useState(invoice?.notes ?? "")
-  const [lines, setLines] = useState<DraftLine[]>(() => (invoice?.lines ?? []).map(toDraft))
+  const [lines, setLines] = useState<DraftLine[]>(() =>
+    invoice
+      ? (invoice.lines ?? []).map(toDraft)
+      : order
+        ? [
+            toDraft({
+              kind: KIND_FOR_ORDER[order.type],
+              description: `${order.type[0].toUpperCase()}${order.type.slice(1)} order ${order.orderNumber}${order.boxCount ? ` — ${order.boxCount} box${order.boxCount === 1 ? "" : "es"}` : ""}`,
+              quantity: 1,
+              unitPrice: 0,
+              taxRateId: "",
+            }),
+          ]
+        : [],
+  )
   const [suggesting, setSuggesting] = useState(false)
 
   const terms = settings?.paymentTermsDays ?? 30
   const effectiveDue = dueDate || addDaysISO(invoiceDate, terms) // follows the invoice date until changed by hand
   const defaultTax = settings?.defaultTaxRateId ?? "GB_NO_TAX"
-  const clientName = clients?.find((c) => c.ClientId === clientId)?.Client ?? invoice?.clientName ?? clientId
+  const clientName =
+    clients?.find((c) => c.ClientId === clientId)?.Client ?? invoice?.clientName ?? order?.clientName ?? clientId
   const net = lines.reduce((sum, l) => sum + lineTotal(l), 0)
   const linesOk =
     lines.length > 0 && lines.every((l) => l.description.trim() && qtyOk(l.quantity) && priceOk(l.unitPrice))
@@ -112,10 +149,11 @@ export function InvoiceForm({ invoice, initialClientId }: { invoice?: Invoice; i
       const saved = await save.mutateAsync({
         id: invoice?.id,
         input: {
+          orderId: invoice ? undefined : order?.id,
           clientId,
           clientName,
-          periodFrom: periodFrom || undefined,
-          periodTo: periodTo || undefined,
+          periodFrom: forOrder ? undefined : periodFrom || undefined,
+          periodTo: forOrder ? undefined : periodTo || undefined,
           invoiceDate,
           dueDate: effectiveDue,
           notes: notes.trim() || undefined,
@@ -124,7 +162,7 @@ export function InvoiceForm({ invoice, initialClientId }: { invoice?: Invoice; i
             description: l.description.trim(),
             quantity: Number(l.quantity),
             unitPrice: Number(l.unitPrice),
-            taxRateId: l.taxRateId,
+            taxRateId: l.taxRateId || defaultTax,
             sourceType: l.sourceType,
             sourceId: l.sourceId,
           })),
@@ -141,13 +179,13 @@ export function InvoiceForm({ invoice, initialClientId }: { invoice?: Invoice; i
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Client and period</CardTitle>
+          <CardTitle className="text-sm">{forOrder ? "Client" : "Client and period"}</CardTitle>
         </CardHeader>
         <CardContent>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="inv-client">Client</FieldLabel>
-              <Select value={clientId} onValueChange={(v) => setClientId(v ?? "")}>
+              <Select value={clientId} onValueChange={(v) => setClientId(v ?? "")} disabled={forOrder}>
                 <SelectTrigger id="inv-client">
                   <SelectValue placeholder="Choose a client" getLabel={() => clientName} />
                 </SelectTrigger>
@@ -160,27 +198,41 @@ export function InvoiceForm({ invoice, initialClientId }: { invoice?: Invoice; i
                 </SelectContent>
               </Select>
             </Field>
-            <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-              <Field>
-                <FieldLabel htmlFor="inv-from">Period from</FieldLabel>
-                <Input id="inv-from" type="date" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="inv-to">Period to</FieldLabel>
-                <Input id="inv-to" type="date" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} />
-              </Field>
-              <Button
-                variant="outline"
-                disabled={!clientId || !periodFrom || !periodTo || suggesting}
-                onClick={suggest}
-              >
-                {suggesting ? "Suggesting…" : "Suggest lines"}
-              </Button>
-            </div>
-            <FieldDescription>
-              Suggestions: boxes in storage, boxes registered in the period, and orders completed in the period that
-              aren&apos;t on an invoice yet. Prices start at the last price used — check them.
-            </FieldDescription>
+            {forOrder ? (
+              <FieldDescription>
+                For order {order?.orderNumber ?? "(see the invoice)"} at its billing stage. Type the lines and prices;
+                once it is in Sage the customer can pay it, and the order can then be scheduled.
+              </FieldDescription>
+            ) : (
+              <>
+                <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                  <Field>
+                    <FieldLabel htmlFor="inv-from">Period from</FieldLabel>
+                    <Input
+                      id="inv-from"
+                      type="date"
+                      value={periodFrom}
+                      onChange={(e) => setPeriodFrom(e.target.value)}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="inv-to">Period to</FieldLabel>
+                    <Input id="inv-to" type="date" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} />
+                  </Field>
+                  <Button
+                    variant="outline"
+                    disabled={!clientId || !periodFrom || !periodTo || suggesting}
+                    onClick={suggest}
+                  >
+                    {suggesting ? "Suggesting…" : "Suggest lines"}
+                  </Button>
+                </div>
+                <FieldDescription>
+                  Suggestions: boxes in storage, boxes registered in the period, and orders completed in the period that
+                  aren&apos;t on an invoice yet. Prices start at the last price used — check them.
+                </FieldDescription>
+              </>
+            )}
           </FieldGroup>
         </CardContent>
       </Card>
@@ -236,7 +288,7 @@ export function InvoiceForm({ invoice, initialClientId }: { invoice?: Invoice; i
                     </TableCell>
                     <TableCell>
                       <Select
-                        value={l.taxRateId}
+                        value={l.taxRateId || defaultTax} // an order invoice's first line takes the default VAT
                         onValueChange={(v) => setLine(l.key, { taxRateId: v ?? l.taxRateId })}
                       >
                         <SelectTrigger aria-label="VAT rate">

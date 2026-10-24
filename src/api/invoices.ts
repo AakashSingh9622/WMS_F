@@ -46,6 +46,27 @@ export const invoiceSchema = z.object({
   notes: z.string().optional(),
   status: invoiceStatusSchema,
   netTotal: z.number(),
+  grossTotal: z.number().optional(), // Sage's total incl. VAT, once it is in Sage
+  currency: z.string().optional(),
+  orderId: z.string().optional(), // the order this invoice bills (billing stage)
+  // standing account (issued invoices): paid so far — portal card, staff, or what Sage says after "Update from Sage"
+  amountPaid: z.number().optional(),
+  outstanding: z.number().optional(),
+  paidAt: z.string().optional(),
+  payments: z
+    .array(
+      z.object({
+        amount: z.number(),
+        method: z.string(),
+        reference: z.string().optional(),
+        note: z.string().optional(),
+        via: z.string(),
+        by: actorSchema,
+        at: z.string(),
+      }),
+    )
+    .optional(),
+  sageSyncedAt: z.string().optional(),
   sendingSince: z.string().optional(),
   lastError: z.string().optional(),
   sageContactId: z.string().optional(),
@@ -62,6 +83,8 @@ export const invoiceSchema = z.object({
 export type Invoice = z.infer<typeof invoiceSchema>
 
 export interface InvoiceInput {
+  /** Only when creating: the order (at its billing stage) this invoice is for. */
+  orderId?: string
   clientId: string
   clientName: string
   periodFrom?: string
@@ -71,6 +94,8 @@ export interface InvoiceInput {
   notes?: string
   lines: InvoiceLine[]
 }
+
+const ORDERS = ["orders"] as const // every order query (an order's invoice moves its billing stage)
 
 const KEYS = {
   all: ["invoices"] as const,
@@ -121,6 +146,7 @@ export function useSaveInvoice() {
     onSuccess: (inv) => {
       qc.setQueryData(KEYS.detail(inv.id), inv)
       qc.invalidateQueries({ queryKey: KEYS.all })
+      if (inv.orderId) qc.invalidateQueries({ queryKey: ORDERS }) // the order's billing moved on
     },
   })
 }
@@ -129,7 +155,10 @@ export function useDeleteInvoice() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (id: string) => apiClient.delete(`/invoices/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEYS.all })
+      qc.invalidateQueries({ queryKey: ORDERS })
+    },
   })
 }
 
@@ -144,10 +173,61 @@ export const invoiceSendApi = {
       sageLink?: string
       sageContactId?: string
       sageBusinessId?: string
+      grossTotal?: number // Sage's total incl. VAT — what the customer pays for an order's invoice
+      currency?: string
+      stripeCustomerId?: string // the client's Stripe customer (DocuSoft card) — lets the customer pay by card in the portal
     },
   ) => parse(invoiceSchema, await apiClient.post(`/invoices/${id}/issued`, body)),
   failed: async (id: string, message: string) =>
     parse(invoiceSchema, await apiClient.post(`/invoices/${id}/send-failed`, { message })),
+}
+
+/** A payment against an invoice in Sage (bank transfer seen, cheque, …) — counts on the client's standing account. */
+export function useRecordInvoicePayment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      input,
+    }: {
+      id: string
+      input: {
+        amount: number
+        method: "bank_transfer" | "card" | "other"
+        reference?: string
+        date?: string
+        note?: string
+      }
+    }) => parse(invoiceSchema, await apiClient.post(`/invoices/${id}/payments`, input)),
+    onSuccess: (inv) => {
+      qc.setQueryData(KEYS.detail(inv.id), inv)
+      qc.invalidateQueries({ queryKey: KEYS.all })
+      qc.invalidateQueries({ queryKey: ["billing"] })
+      qc.invalidateQueries({ queryKey: ORDERS })
+    },
+  })
+}
+
+// "Update from Sage" hand-over: which invoices to check, then what Sage says about them.
+export const invoiceSageSyncApi = {
+  toCheck: async (clientId?: string) =>
+    parse(
+      z.array(
+        z.object({
+          invoiceId: z.string(),
+          invoiceNumber: z.string(),
+          sageInvoiceId: z.string(),
+          sageContactId: z.string().optional(),
+          invoiceDate: z.string(),
+        }),
+      ),
+      await apiClient.get(`/invoices/sage-sync${clientId ? `?clientId=${encodeURIComponent(clientId)}` : ""}`),
+    ),
+  report: async (items: { invoiceId: string; totalAmount: number; outstandingAmount: number }[]) =>
+    parse(
+      z.object({ updated: z.number(), ordersPaid: z.number() }),
+      await apiClient.post("/invoices/sage-sync", { items }),
+    ),
 }
 
 export function useInvalidateInvoice() {
@@ -155,6 +235,7 @@ export function useInvalidateInvoice() {
   return (inv?: Invoice) => {
     if (inv) qc.setQueryData(KEYS.detail(inv.id), inv)
     qc.invalidateQueries({ queryKey: KEYS.all })
+    if (inv?.orderId) qc.invalidateQueries({ queryKey: ORDERS })
   }
 }
 

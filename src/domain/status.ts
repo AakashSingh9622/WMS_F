@@ -63,6 +63,7 @@ export const PORTAL_BOX_STATUS_LABEL: Record<BoxStatus, string> = {
 export const PORTAL_ORDER_STATUS_LABEL: Record<string, string> = {
   requested: "Requested — waiting for warehouse approval",
   approved: "Approved",
+  billing: "Approved — invoice and payment",
   scheduled: "Scheduled",
   in_progress: "Out for delivery",
   ready: "Ready",
@@ -75,6 +76,7 @@ export const PORTAL_ORDER_STATUS_LABEL: Record<string, string> = {
 export const ORDER_STATUS_LABEL: Record<string, string> = {
   requested: "Requested",
   approved: "Approved",
+  billing: "Billing",
   scheduled: "Scheduled",
   in_progress: "In progress",
   ready: "Ready",

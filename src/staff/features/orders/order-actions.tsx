@@ -206,6 +206,12 @@ export function OrderActions({ order }: { order: Order }) {
         />
       )}
 
+      {actions.waitingForPayment && (
+        <Button size="sm" variant="outline" disabled title="Unlocks once the invoice is paid or billing is waived">
+          Schedule (waiting for payment)
+        </Button>
+      )}
+
       {actions.canSchedule && (
         <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
           <DialogTrigger render={<Button size="sm" variant="outline" />}>Schedule</DialogTrigger>

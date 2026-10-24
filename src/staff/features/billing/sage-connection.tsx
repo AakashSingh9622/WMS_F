@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import {
   clearSageTokens,
   connectSage,
+  getActiveAccountingSystem,
   getSageBusiness,
   getSageLedgerAccounts,
   hasSageSession,
@@ -39,6 +40,17 @@ export function useSageConnection() {
   return { connected, connecting, connect, disconnect: clearSageTokens }
 }
 
+/** The practice's active accounting system — re-read when the tab gets focus (an admin may have just switched it). */
+export function useActiveAccountingSystem() {
+  return useQuery({
+    queryKey: ["docusoft", "accounting-system"],
+    queryFn: getActiveAccountingSystem,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    retry: false,
+  })
+}
+
 export function useSageBusiness(enabled: boolean) {
   return useQuery({
     enabled,
@@ -59,8 +71,17 @@ export function useSageLedgerAccounts(enabled: boolean) {
   })
 }
 
-/** Status line + Connect / Disconnect, for the settings page and the invoice page. */
-export function SageConnectionBar({ connection }: { connection: ReturnType<typeof useSageConnection> }) {
+/**
+ * Status line + Connect / Disconnect, for the settings page and the invoice page. `onConnect` replaces the Connect
+ * click (the invoice page shows the "Sage One is not active" warning there instead of signing in).
+ */
+export function SageConnectionBar({
+  connection,
+  onConnect,
+}: {
+  connection: ReturnType<typeof useSageConnection>
+  onConnect?: () => void
+}) {
   const business = useSageBusiness(connection.connected)
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -82,7 +103,12 @@ export function SageConnectionBar({ connection }: { connection: ReturnType<typeo
         <>
           <Badge variant="outline">Not connected</Badge>
           <span className="text-muted-foreground text-sm">Sign in to Sage once in this browser.</span>
-          <Button size="sm" className="ml-auto" disabled={connection.connecting} onClick={() => connection.connect()}>
+          <Button
+            size="sm"
+            className="ml-auto"
+            disabled={connection.connecting}
+            onClick={() => (onConnect ? onConnect() : connection.connect())}
+          >
             {connection.connecting ? "Waiting for Sage…" : "Connect to Sage"}
           </Button>
         </>

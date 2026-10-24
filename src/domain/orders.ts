@@ -55,6 +55,17 @@ export interface OrderActions {
   canRecordDelivery: boolean
   /** Approve is blocked until the client's main contact approves in the portal. */
   waitingForClientApproval: boolean
+  /** Billing stage: raise the invoice, record a payment, waive billing (billing.manage). */
+  canManageBilling: boolean
+  /** At the billing stage and not paid / waived yet — Schedule stays locked (the backend refuses it too). */
+  waitingForPayment: boolean
+}
+
+/** Billing is finished (paid, acknowledged when payment isn't required, or waived), or the order isn't at billing. */
+export function isBillingSettled(order: Order): boolean {
+  if (order.status !== "billing") return true
+  const status = order.billing?.status ?? "awaiting_invoice"
+  return status === "paid" || status === "acknowledged" || status === "waived"
 }
 
 /** Which action buttons the staff order-detail screen should show, given status/type/role (spec §7). */
@@ -66,18 +77,19 @@ export function getOrderActions(order: Order, roles: readonly Role[]): OrderActi
   const authorise = can(roles, "orders.authorise")
   const working = s === "in_progress" || s === "ready"
   const waitingForClientApproval = !!order.clientApprovalRequired && !order.clientApprovedAt
+  const waitingForPayment = !isBillingSettled(order)
+  // the client's sign-off can be given any time before the work starts
+  const beforeWork = s === "approved" || s === "billing" || s === "scheduled"
 
   return {
-    canApprove: approve && next("approved") && !waitingForClientApproval,
+    canApprove: approve && next("billing") && !waitingForClientApproval,
     canReject: approve && next("rejected"),
-    canSchedule: operate && next("scheduled"),
+    canSchedule: operate && next("scheduled") && !waitingForPayment,
     canStart: operate && next("in_progress"),
     canCancel: operate && next("cancelled"),
     canDispatch: operate && working && order.type === "dispatch",
-    canAuthoriseDestruction:
-      authorise && order.type === "destruction" && !order.destruction && (s === "approved" || s === "scheduled"),
-    canAuthoriseDigitization:
-      authorise && order.type === "digitize" && !order.digitization && (s === "approved" || s === "scheduled"),
+    canAuthoriseDestruction: authorise && order.type === "destruction" && !order.destruction && beforeWork,
+    canAuthoriseDigitization: authorise && order.type === "digitize" && !order.digitization && beforeWork,
     canFixBoxScan: operate && order.type === "digitize" && (s === "scheduled" || s === "in_progress"),
     canDestroy: operate && working && order.type === "destruction" && !!order.destruction?.approvedBy,
     canComplete: operate && s === "in_progress" && order.type === "collection",
@@ -90,8 +102,10 @@ export function getOrderActions(order: Order, roles: readonly Role[]): OrderActi
       order.type === "destruction" &&
       !!order.destruction &&
       !order.destruction.approvedBy &&
-      ["approved", "scheduled", "in_progress", "ready"].includes(s),
+      ["approved", "billing", "scheduled", "in_progress", "ready"].includes(s),
     canRecordDelivery: operate && order.type === "dispatch" && s === "completed" && !order.delivery?.receivedBy,
     waitingForClientApproval,
+    canManageBilling: can(roles, "billing.manage") && s === "billing",
+    waitingForPayment,
   }
 }

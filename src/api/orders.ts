@@ -154,6 +154,28 @@ export function useCompleteOrder() {
   return useOrderAction<{ warehouseId?: string }>((id) => `/orders/${id}/complete`)
 }
 
+/** Billing stage: a payment received outside the portal (bank transfer, card over the phone, …). billing.manage */
+export function useRecordOrderPayment() {
+  return useOrderAction<{
+    method: "bank_transfer" | "card" | "other"
+    reference?: string
+    amount?: number
+    note?: string
+  }>((id) => `/orders/${id}/billing/payment`)
+}
+/** Billing stage: "payment not required" (billed monthly / annually on account) — the client only acknowledges. */
+export function useSetPaymentRequired() {
+  return useOrderAction<{ required: boolean }>((id) => `/orders/${id}/billing/payment-required`)
+}
+/** Billing stage: record that the client acknowledged the invoice (e.g. by email / phone). billing.manage */
+export function useAcknowledgeOrderInvoice() {
+  return useOrderAction<{ note?: string }>((id) => `/orders/${id}/billing/acknowledge`)
+}
+/** Billing stage: no invoice at all (no charge) — the order can be scheduled. billing.manage */
+export function useWaiveOrderBilling() {
+  return useOrderAction<{ reason: string }>((id) => `/orders/${id}/billing/waive`)
+}
+
 /** Supervisor: pause an order (reason required); resume goes back to where it was. */
 export function useHoldOrder() {
   return useOrderAction<{ reason: string }>((id) => `/orders/${id}/hold`)
