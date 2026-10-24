@@ -36,6 +36,9 @@ const nextConfig: NextConfig = {
       { source: "/api/billing/:path*", destination: `${BACKEND_API_URL}/api/billing/:path*` },
       { source: "/api/exports/:path*", destination: `${BACKEND_API_URL}/api/exports/:path*` },
       { source: "/api/notifications", destination: `${BACKEND_API_URL}/api/notifications` },
+      { source: "/api/notifications/:path*", destination: `${BACKEND_API_URL}/api/notifications/:path*` },
+      // The signed-in staff member's own settings (their signature for certificates of destruction).
+      { source: "/api/me/:path*", destination: `${BACKEND_API_URL}/api/me/:path*` },
       // Supervisor queue of scans that didn't match.
       { source: "/api/exceptions", destination: `${BACKEND_API_URL}/api/exceptions` },
       { source: "/api/exceptions/:path*", destination: `${BACKEND_API_URL}/api/exceptions/:path*` },

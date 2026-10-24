@@ -73,6 +73,8 @@ export const certificateSchema = z.object({
     approvedBy: z.string().optional(),
     approvedAt: z.string().optional(),
     destroyedBy: z.string().optional(),
+    // the destroyer's signature as it was when the certificate was issued (older certificates have none)
+    destroyedBySignature: z.object({ image: z.string(), kind: z.string().optional() }).optional(),
     destroyedAt: z.string(),
     witness: z.string().optional(),
     place: z.string().optional(),

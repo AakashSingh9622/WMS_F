@@ -25,6 +25,7 @@ import { staffNavItems } from "@/domain/navigation"
 import { can } from "@/domain/permissions"
 import { UserMenu } from "@/components/user-menu"
 import { ScanBoxButton } from "@/staff/features/scanning/scan-box-dialog"
+import { NotificationBell } from "@/staff/features/notifications/notification-bell"
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs"
 import {
   Sidebar,
@@ -117,6 +118,7 @@ export function StaffShell({ children }: { children: ReactNode }) {
             </div>
             <div className="flex items-center gap-2">
               <ScanBoxButton />
+              <NotificationBell />
               <UserMenu />
             </div>
           </header>

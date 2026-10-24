@@ -14,7 +14,6 @@ import {
   useAuthoriseDigitization,
   useCancelOrder,
   useCompleteOrder,
-  useDestroyOrder,
   useDispatchOrder,
   useHoldOrder,
   useRecordDelivery,
@@ -31,6 +30,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import type { DestructionMethod, Order } from "@/api/types"
+import { DestroyDialog } from "@/staff/features/orders/destroy-dialog"
 
 function onError(err: unknown) {
   toast.error(err instanceof Error ? err.message : "That didn't work")
@@ -168,7 +168,6 @@ export function OrderActions({ order }: { order: Order }) {
   const dispatch = useDispatchOrder()
   const authorise = useAuthoriseDestruction()
   const authoriseDigitizing = useAuthoriseDigitization()
-  const destroy = useDestroyOrder()
   const complete = useCompleteOrder()
   const hold = useHoldOrder()
   const approveDestruction = useApproveDestruction()
@@ -391,18 +390,8 @@ export function OrderActions({ order }: { order: Order }) {
         </Button>
       )}
 
-      {actions.canDestroy && (
-        <FieldsAction
-          label="Mark destroyed"
-          title="Confirm the boxes were destroyed"
-          fields={[
-            { name: "witness", label: "Witness", optional: true },
-            { name: "place", label: "Place of destruction", optional: true },
-          ]}
-          isPending={destroy.isPending}
-          onSubmit={(v) => destroy.mutateAsync({ orderId: order.id, input: { witness: v.witness, place: v.place } })}
-        />
-      )}
+      {/* with the signer's signature, which goes on the certificate */}
+      {actions.canDestroy && <DestroyDialog orderId={order.id} />}
 
       {actions.canRecordDelivery && (
         <FieldsAction
