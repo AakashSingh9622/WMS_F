@@ -40,6 +40,8 @@ interface QuickAction {
   icon: AppIcon
   /** Hidden from users without it (e.g. auditors only get "Find a box"). */
   permission?: Permission
+  /** Kept in the list but not shown on the dashboard (flip back to show it again). */
+  hidden?: boolean
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
@@ -56,6 +58,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     hint: "Scan arriving boxes",
     icon: ORDER_TYPE_META.collection.icon,
     permission: "boxes.operate",
+    hidden: true,
   },
   {
     href: "/app/boxes/put-away",
@@ -63,6 +66,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     hint: "Scan box, then slot",
     icon: ORDER_TYPE_META.dispatch.icon,
     permission: "boxes.operate",
+    hidden: true,
   },
   {
     href: "/app/orders/new?type=collection",
@@ -277,7 +281,7 @@ export function StaffDashboardScreen() {
   const overallPercent = capacityPercent(totalUsed, totalCapacity)
   const overallLevel = capacityLevel(totalUsed, totalCapacity)
   const canReadAudit = can(user?.roles, "audit.read") // the Audit log page needs it
-  const quickActions = QUICK_ACTIONS.filter((a) => !a.permission || can(user?.roles, a.permission))
+  const quickActions = QUICK_ACTIONS.filter((a) => !a.hidden && (!a.permission || can(user?.roles, a.permission)))
 
   // One sentence under the greeting: what is waiting right now.
   const waiting = [
