@@ -9,7 +9,9 @@ export default async function SettingsLayout({ children }: LayoutProps<"/app/set
   const items = [
     { href: "/app/settings/profile", label: "Profile" },
     ...(allowed("layout.manage") ? [{ href: "/app/settings/warehouse-layout", label: "Warehouse layout" }] : []),
+    ...(allowed("layout.manage") ? [{ href: "/app/settings/layout-import", label: "Import layout" }] : []),
     ...(allowed("settings.manage") ? [{ href: "/app/settings/box-sizes", label: "Box sizes" }] : []),
+    ...(allowed("settings.manage") ? [{ href: "/app/settings/custom-fields", label: "Custom fields" }] : []),
     { href: "/app/settings/labels", label: "Labels" },
     { href: "/app/settings/exports", label: "Exports" },
     ...(allowed("settings.manage") ? [{ href: "/app/settings/orders", label: "Orders" }] : []),

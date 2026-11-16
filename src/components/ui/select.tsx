@@ -180,7 +180,10 @@ function Select({
         // (and its option font-size "inherit" beats text-sm — on <body> that would be 16px).
         styles={{
           control: (base) => ({ ...base, minHeight: 32 }),
-          menu: (base) => ({ ...base, fontSize: "0.875rem" }),
+          // react-select's inline z-index: 1 beats the Tailwind z-50 classes, so a sticky table header (z-10) was
+          // painted over an open menu. Set it here, where inline styles are decided.
+          menu: (base) => ({ ...base, fontSize: "0.875rem", zIndex: 50 }),
+          menuPortal: (base) => ({ ...base, zIndex: 60 }),
         }}
         // Default (absolute) positioning: the menu opens right under the control. "fixed" is wrong inside dialogs,
         // because their CSS transform makes fixed coordinates relative to the dialog (menu jumped to a corner).

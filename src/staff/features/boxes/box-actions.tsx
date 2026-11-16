@@ -15,6 +15,7 @@ import {
   useReleaseQuarantine,
   useUpdateBoxDetails,
 } from "@/api/boxes"
+import { useCustomFields } from "@/api/customFields"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -34,14 +35,26 @@ function EditDetailsDialog({ box }: { box: Box }) {
   const [reference, setReference] = useState(box.reference ?? "")
   const [destroyAfter, setDestroyAfter] = useState(box.destroyAfter ?? "")
   const [retentionCategory, setRetentionCategory] = useState(box.retentionCategory ?? "")
+  const [palletNo, setPalletNo] = useState(box.palletNo ?? "")
   const [reason, setReason] = useState("")
   const update = useUpdateBoxDetails()
+  const { data: fields } = useCustomFields(box.clientId)
+  // The client's own fields, as text (what the inputs hold); only the ones that changed are sent.
+  const [custom, setCustom] = useState<Record<string, string>>({})
+  const customValue = (code: string) => custom[code] ?? String(box.customFields?.[code] ?? "")
+  const customChanges = Object.fromEntries(
+    (fields ?? [])
+      .filter((f) => customValue(f.code) !== String(box.customFields?.[f.code] ?? ""))
+      .map((f) => [f.code, customValue(f.code)])
+  )
 
   async function submit() {
     try {
       await update.mutateAsync({
         boxId: box.id,
         input: {
+          customFields: Object.keys(customChanges).length ? customChanges : undefined,
+          palletNo: palletNo !== (box.palletNo ?? "") ? palletNo : undefined,
           description: description !== box.description ? description : undefined,
           department: department !== (box.department ?? "") ? department : undefined,
           reference: reference !== (box.reference ?? "") ? reference : undefined,
@@ -62,39 +75,86 @@ function EditDetailsDialog({ box }: { box: Box }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="outline" size="sm" />}>Edit details</DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Edit box details</DialogTitle>
+          <p className="text-muted-foreground text-sm">{box.boxNumber} · every change is recorded in the box history.</p>
         </DialogHeader>
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="edit-description">Description</FieldLabel>
-            <Textarea id="edit-description" value={description} onChange={(e) => setDescription(e.target.value)} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="edit-department">Department</FieldLabel>
-            <Input id="edit-department" value={department} onChange={(e) => setDepartment(e.target.value)} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="edit-reference">Reference</FieldLabel>
-            <Input id="edit-reference" value={reference} onChange={(e) => setReference(e.target.value)} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="edit-destroy-after">Destroy after</FieldLabel>
-            <Input
-              id="edit-destroy-after"
-              type="date"
-              value={destroyAfter}
-              onChange={(e) => setDestroyAfter(e.target.value)}
-            />
-          </Field>
-          <RetentionCategoryField value={retentionCategory} onChange={setRetentionCategory} />
-          <Field>
-            <FieldLabel htmlFor="edit-reason">Reason for this change</FieldLabel>
-            <Input id="edit-reason" value={reason} onChange={(e) => setReason(e.target.value)} />
-          </Field>
-        </FieldGroup>
+        <div className="max-h-[65vh] space-y-6 overflow-y-auto pr-1">
+          <section className="space-y-3">
+            <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">Contents</h3>
+            <Field>
+              <FieldLabel htmlFor="edit-description">Description</FieldLabel>
+              <Textarea id="edit-description" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="edit-department">Department</FieldLabel>
+                <Input id="edit-department" value={department} onChange={(e) => setDepartment(e.target.value)} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="edit-reference">Reference</FieldLabel>
+                <Input id="edit-reference" value={reference} onChange={(e) => setReference(e.target.value)} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="edit-pallet">Pallet number</FieldLabel>
+                <Input id="edit-pallet" value={palletNo} maxLength={40} onChange={(e) => setPalletNo(e.target.value)} />
+              </Field>
+            </div>
+          </section>
+
+          <section className="space-y-3 border-t pt-5">
+            <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">Retention</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="edit-destroy-after">Destroy after</FieldLabel>
+                <Input
+                  id="edit-destroy-after"
+                  type="date"
+                  value={destroyAfter}
+                  onChange={(e) => setDestroyAfter(e.target.value)}
+                />
+              </Field>
+              <RetentionCategoryField value={retentionCategory} onChange={setRetentionCategory} />
+            </div>
+          </section>
+
+          {fields && fields.length > 0 && (
+            <section className="space-y-3 border-t pt-5">
+              <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">Client's own fields</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {fields.map((f) => (
+                  <Field key={f.code}>
+                    <FieldLabel htmlFor={`edit-cf-${f.code}`}>{f.name}</FieldLabel>
+                    <Input
+                      id={`edit-cf-${f.code}`}
+                      type={f.fieldType === "date" ? "date" : f.fieldType === "number" ? "number" : "text"}
+                      step={f.fieldType === "number" ? "any" : undefined}
+                      value={customValue(f.code)}
+                      onChange={(e) => setCustom({ ...custom, [f.code]: e.target.value })}
+                    />
+                  </Field>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="space-y-3 border-t pt-5">
+            <Field>
+              <FieldLabel htmlFor="edit-reason">Reason for this change (required)</FieldLabel>
+              <Input
+                id="edit-reason"
+                placeholder="e.g. Corrected after checking the paperwork"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            </Field>
+          </section>
+        </div>
         <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
           <Button onClick={submit} disabled={!reason || update.isPending}>
             {update.isPending ? "Saving…" : "Save changes"}
           </Button>

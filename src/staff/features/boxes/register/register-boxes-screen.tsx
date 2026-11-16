@@ -149,7 +149,11 @@ export function RegisterBoxesScreen() {
               <Button variant="ghost" size="sm" onClick={startOver}>
                 Start a new batch
               </Button>
-            ) : undefined
+            ) : (
+              <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/app/boxes/import" />}>
+                Import from file
+              </Button>
+            )
           }
         />
       )}

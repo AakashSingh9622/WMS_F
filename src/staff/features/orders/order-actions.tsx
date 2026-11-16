@@ -14,9 +14,12 @@ import {
   useAuthoriseDigitization,
   useCancelOrder,
   useCompleteOrder,
+  useDigitizeOrder,
   useDispatchOrder,
   useHoldOrder,
+  useOrderLines,
   useRecordDelivery,
+  useReopenOrder,
   useResumeOrder,
   useRejectOrder,
   useScheduleOrder,
@@ -59,7 +62,7 @@ function TextFieldAction({
 
   async function submit() {
     try {
-      await onSubmit(value)
+      await onSubmit(value.trim())
       setOpen(false)
       setValue("")
     } catch (err) {
@@ -79,11 +82,25 @@ function TextFieldAction({
           {multiline ? (
             <Textarea id="action-field" value={value} onChange={(e) => setValue(e.target.value)} />
           ) : (
-            <Input id="action-field" value={value} onChange={(e) => setValue(e.target.value)} />
+            <Input
+              id="action-field"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (optional || value.trim()) && !isPending) void submit()
+              }}
+            />
           )}
         </Field>
         <DialogFooter>
-          <Button onClick={submit} disabled={(!optional && !value) || isPending}>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Back
+          </Button>
+          <Button
+            variant={buttonVariant === "destructive" ? "destructive" : "default"}
+            onClick={submit}
+            disabled={(!optional && !value.trim()) || isPending}
+          >
             {isPending ? "Saving…" : label}
           </Button>
         </DialogFooter>
@@ -156,6 +173,82 @@ function FieldsAction({
   )
 }
 
+/**
+ * Digitise order: staff scan each box's documents (with the scanner of their choice), tick the box here once it is
+ * done, and when every box is ticked the order is completed and the boxes are marked as digitised.
+ */
+function DigitiseDialog({ order }: { order: Order }) {
+  const [open, setOpen] = useState(false)
+  const [done, setDone] = useState<Set<string>>(new Set())
+  const { data: lines = [], isLoading } = useOrderLines(order.id)
+  const start = useStartOrder()
+  const digitize = useDigitizeOrder()
+  const open_ = lines.filter((l) => l.status !== "removed" && l.status !== "missing")
+  const allDone = open_.length > 0 && open_.every((l) => done.has(l.id))
+  const busy = start.isPending || digitize.isPending
+
+  async function finish() {
+    try {
+      if (order.status === "scheduled") await start.mutateAsync({ orderId: order.id })
+      await digitize.mutateAsync({ orderId: order.id })
+      toast.success(`${open_.length} box${open_.length === 1 ? "" : "es"} digitised`)
+      setOpen(false)
+    } catch (err) {
+      onError(err)
+    }
+  }
+
+  const toggle = (id: string) =>
+    setDone((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" className="gap-1.5" />}>
+        <DocumentScanner className="size-4" />
+        Digitise boxes
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Digitise {order.orderNumber}</DialogTitle>
+          <p className="text-muted-foreground text-sm">
+            Scan each box&apos;s documents, then tick the box. When all are ticked, finish to complete the order.
+            {order.digitization?.note ? ` Client note: ${order.digitization.note}` : ""}
+          </p>
+        </DialogHeader>
+        <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border text-sm">
+          {isLoading && <li className="text-muted-foreground p-3">Loading boxes…</li>}
+          {open_.map((line) => (
+            <li key={line.id}>
+              <label className="flex cursor-pointer items-center gap-3 px-3 py-2">
+                <input type="checkbox" checked={done.has(line.id)} onChange={() => toggle(line.id)} />
+                <span className={done.has(line.id) ? "text-muted-foreground line-through" : "font-medium"}>
+                  {line.boxNumber}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <p className="text-muted-foreground text-xs">
+          {open_.filter((l) => done.has(l.id)).length} of {open_.length} scanned
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Close
+          </Button>
+          <Button disabled={!allDone || busy} onClick={finish}>
+            {busy ? "Saving…" : "Finish digitising"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function OrderActions({ order }: { order: Order }) {
   const { user } = useAuth()
   const actions = getOrderActions(order, user?.roles ?? [])
@@ -173,6 +266,7 @@ export function OrderActions({ order }: { order: Order }) {
   const approveDestruction = useApproveDestruction()
   const recordDelivery = useRecordDelivery()
   const resume = useResumeOrder()
+  const reopen = useReopenOrder()
 
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [scheduledFor, setScheduledFor] = useState(todayISO)
@@ -348,13 +442,7 @@ export function OrderActions({ order }: { order: Order }) {
         </Dialog>
       )}
 
-      {actions.canFixBoxScan && (
-        // The scan app is not connected yet: for now this only tells the user. Open the app from here later.
-        <Button size="sm" className="gap-1.5" onClick={() => toast.info("The fix-box-scan app is not connected yet.")}>
-          <DocumentScanner className="size-4" />
-          fix-box-scan
-        </Button>
-      )}
+      {actions.canFixBoxScan && <DigitiseDialog order={order} />}
 
       {actions.canDispatch && (
         <FieldsAction
@@ -452,6 +540,15 @@ export function OrderActions({ order }: { order: Order }) {
         <Button size="sm" disabled={resume.isPending} onClick={() => resume.mutate({ orderId: order.id }, { onError })}>
           Resume
         </Button>
+      )}
+
+      {actions.canReopen && (
+        <TextFieldAction
+          label="Reopen order"
+          fieldLabel="Why is it being reopened?"
+          isPending={reopen.isPending}
+          onSubmit={(reason) => reopen.mutateAsync({ orderId: order.id, input: { reason } })}
+        />
       )}
 
       {actions.canCancel && (

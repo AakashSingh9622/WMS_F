@@ -5,6 +5,7 @@ import Link from "next/link"
 
 import { useBox } from "@/api/boxes"
 import { useAuditSearch } from "@/api/audit"
+import { useCustomFields } from "@/api/customFields"
 import { boxLengthCm } from "@/domain/dimensions"
 import { useBoxSizeName } from "@/api/settings"
 import { shelfAndPosition } from "@/domain/location"
@@ -24,6 +25,13 @@ export function BoxOverviewTab({ boxId }: { boxId: string }) {
   const { data: box, isLoading } = useBox(boxId)
   const { data: audit } = useAuditSearch({ boxId, pageSize: 5 })
   const sizeName = useBoxSizeName()
+  const { data: fieldDefs } = useCustomFields(box?.clientId ?? "", { includeInactive: true })
+  // The client's own fields that this box has a value for, in the client's order (dates shown like the others).
+  const customRows = (fieldDefs ?? []).flatMap((f) => {
+    const raw = box?.customFields?.[f.code]
+    if (raw === undefined || raw === "") return []
+    return [{ code: f.code, name: f.name, value: f.fieldType === "date" ? formatDate(String(raw)) : String(raw) }]
+  })
 
   if (isLoading) return <Skeleton className="h-64 w-full" />
   if (!box) return null
@@ -52,6 +60,17 @@ export function BoxOverviewTab({ boxId }: { boxId: string }) {
           </dl>
         </section>
 
+        {customRows.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold">Client&apos;s own fields</h2>
+            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              {customRows.map((f) => (
+                <Field key={f.code} label={f.name} value={f.value} />
+              ))}
+            </dl>
+          </section>
+        )}
+
         <section className="space-y-3">
           <h2 className="text-sm font-semibold">Dates</h2>
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -59,6 +78,7 @@ export function BoxOverviewTab({ boxId }: { boxId: string }) {
             <Field label="Filing to" value={box.filingDateTo ? formatDate(box.filingDateTo) : undefined} />
             <Field label="Destroy after" value={box.destroyAfter ? formatDate(box.destroyAfter) : undefined} />
             <Field label="Retention category" value={box.retentionCategory} />
+            <Field label="Pallet number" value={box.palletNo} />
             <Field label="Registered" value={formatDate(box.createdAt)} />
           </dl>
         </section>

@@ -29,8 +29,11 @@ export function StatusStepper({
 
   const onHold = status === "on_hold"
   const raw = onHold ? (heldFrom ?? "billing") : status
-  const legacyApproved = raw === "approved" || !!withoutBilling
+  // The legacy position is only for an order that is still waiting at that step; one that is already scheduled / in
+  // progress must show where it really is (it used to jump back to "Approved" whenever there was no billing record).
+  const legacyApproved = raw === "approved" || (!!withoutBilling && (raw === "billing" || raw === "requested"))
   const at = legacyApproved ? "billing" : raw
+  const billingReadsApproved = raw === "approved" || !!withoutBilling
   const currentIndex = HAPPY_PATH.indexOf(at)
   const path = at === "ready" ? HAPPY_PATH : HAPPY_PATH.filter((s) => s !== "ready")
   const steps = at === "requested" ? path : path.slice(1) // staff orders skip "requested"
@@ -57,7 +60,7 @@ export function StatusStepper({
               )}
             >
               {done && <Check className="size-3" />}
-              {ORDER_STATUS_LABEL[step === "billing" && legacyApproved ? "approved" : step]}
+              {ORDER_STATUS_LABEL[step === "billing" && billingReadsApproved ? "approved" : step]}
             </span>
             {step !== steps[steps.length - 1] && <span className="text-muted-foreground">→</span>}
           </li>

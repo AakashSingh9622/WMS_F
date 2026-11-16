@@ -13,6 +13,8 @@ import { useAppSelector } from "@/store/hooks"
 import { projectIdOf, useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 import { useCreateOrder } from "@/api/orders"
 import { BoxPicker } from "@/components/box-picker"
+import { BoxListImport } from "@/staff/features/orders/box-list-import"
+import { REQUEST_CHANNELS, type RequestChannel } from "@/domain/request-channel"
 import { OrderTypeLabel } from "@/components/order-type-icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,6 +53,8 @@ export function CreateOrderScreen() {
   const [scheduledFor, setScheduledFor] = useState("")
   const [notes, setNotes] = useState("")
   const [permanentWithdrawal, setPermanentWithdrawal] = useState(false)
+  const [urgent, setUrgent] = useState(false)
+  const [requestChannel, setRequestChannel] = useState<RequestChannel | "">("")
   const [error, setError] = useState<string | null>(null)
 
   const { data: clients } = useGetClientsWithDetailsQuery()
@@ -135,6 +139,8 @@ export function CreateOrderScreen() {
         scheduledFor: scheduledFor || undefined,
         notes: notes || undefined,
         permanentWithdrawal: type === "dispatch" ? permanentWithdrawal : undefined,
+        urgent: (type === "dispatch" || type === "digitize") && urgent ? true : undefined,
+        requestChannel: requestChannel || undefined,
       })
       toast.success(`Order ${order.orderNumber} created`)
       router.push(`/app/orders/${order.id}`)
@@ -243,6 +249,11 @@ export function CreateOrderScreen() {
               {clientId && needsBoxPicker && (
                 <Field>
                   <FieldLabel>Boxes</FieldLabel>
+                  <BoxListImport
+                    clientId={clientId}
+                    type={type}
+                    onBoxes={(ids) => setBoxIds((prev) => [...new Set([...prev, ...ids])])}
+                  />
                   <BoxPicker
                     boxes={clientBoxes?.items ?? []}
                     type={type}
@@ -322,6 +333,37 @@ export function CreateOrderScreen() {
                     <span className="text-muted-foreground block text-xs">
                       The client keeps these boxes for good — they leave storage and can&apos;t come back on a
                       collection.
+                    </span>
+                  </span>
+                </label>
+              )}
+
+              <Field>
+                <FieldLabel htmlFor="channel">How did the client ask? (optional)</FieldLabel>
+                <Select value={requestChannel} onValueChange={(v) => setRequestChannel((v as RequestChannel) ?? "")}>
+                  <SelectTrigger id="channel">
+                    <SelectValue
+                      placeholder="Not recorded"
+                      getLabel={(v) => REQUEST_CHANNELS.find((c) => c.value === v)?.label ?? v}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REQUEST_CHANNELS.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              {(type === "dispatch" || type === "digitize") && (
+                <label className="flex cursor-pointer items-start gap-3 text-sm">
+                  <Checkbox className="mt-0.5" checked={urgent} onCheckedChange={(v) => setUrgent(!!v)} />
+                  <span>
+                    <span className="font-medium">Urgent</span>
+                    <span className="text-muted-foreground block text-xs">
+                      Handle ahead of normal requests. It is shown on the order and counted separately in reports.
                     </span>
                   </span>
                 </label>

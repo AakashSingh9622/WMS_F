@@ -80,7 +80,23 @@ export function BoxContentsTab({ boxId }: { boxId: string }) {
                     {c.createdBy.name}, {formatDate(c.createdAt)}
                   </TableCell>
                   {editable && (
-                    <TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {/* Docbox "Duplicar": copy the line into the form below, change what differs, then Add */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setDescription(c.description)
+                          setReference(c.reference ?? "")
+                          setDateFrom(c.dateFrom ?? "")
+                          setDateTo(c.dateTo ?? "")
+                          setDocId("")
+                          document.getElementById("bc-desc")?.focus()
+                          toast.info("Copied into the form below — change what differs, then press Add.")
+                        }}
+                      >
+                        Duplicate
+                      </Button>
                       <Button
                         size="sm"
                         variant="ghost"

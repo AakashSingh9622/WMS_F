@@ -250,6 +250,8 @@ export const boxSchema = z.object({
   quarantineReason: z.string().optional(),
   quarantinedAt: z.string().optional(),
   retentionCategory: z.string().optional(), // retention rule code (Records → Retention rules)
+  palletNo: z.string().optional(), // the pallet the box sits on
+  customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional(), // the client's own fields, by code (C1 …)
   labelPrinted: z.boolean(),
   slotId: z.string().optional(),
   locationPath: locationPathSchema.optional(),
@@ -380,6 +382,8 @@ export const orderSchema = z.object({
   digitization: orderDigitizationSchema.optional(),
   collection: orderCollectionSchema.optional(),
   permanentWithdrawal: z.boolean().optional(), // dispatch: the boxes go back to the client for good
+  urgent: z.boolean().optional(), // urgent instead of a normal loan
+  requestChannel: z.enum(["email", "phone", "in_person", "post", "fax"]).optional(), // how the client asked
   heldFromStatus: orderStatusSchema.optional(), // on_hold: where resume goes back to
   holdReason: z.string().optional(),
   // destruction asked for by an ordinary client contact: waits for the client's main contact (portal)

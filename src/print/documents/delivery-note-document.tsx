@@ -1,14 +1,22 @@
 "use client"
 
 /* eslint-disable @next/next/no-img-element -- a print page; next/image adds nothing here */
-import { useOrder, useOrderLines } from "@/api/orders"
-import { formatDateTime } from "@/lib/formatting"
+import { useOrder, useOrderBoxes, useOrderLines } from "@/api/orders"
+import { useClientProfile } from "@/api/clientProfile"
+import { useCustomFields } from "@/api/customFields"
+import { useBoxSizeName } from "@/api/settings"
+import { DEFAULT_DELIVERY_COLUMNS, deliveryCell, deliveryColumnLabel } from "@/domain/delivery-columns"
+import { formatDate, formatDateRange, formatDateTime } from "@/lib/formatting"
 import { Button } from "@/components/ui/button"
 
 /** Delivery note for a dispatch order (spec §6.2): goes with the boxes; the recipient signs it as proof of delivery. */
 export function DeliveryNoteDocument({ orderId }: { orderId: string }) {
   const { data: order, isLoading } = useOrder(orderId)
   const { data: lines } = useOrderLines(orderId)
+  const { data: orderBoxes } = useOrderBoxes(orderId)
+  const { data: profile } = useClientProfile(order?.clientId ?? "")
+  const { data: fields = [] } = useCustomFields(order?.clientId ?? "", { includeInactive: true })
+  const sizeName = useBoxSizeName()
 
   if (isLoading) return <p className="text-muted-foreground p-8 text-sm">Loading…</p>
   if (!order || order.type !== "dispatch")
@@ -16,6 +24,19 @@ export function DeliveryNoteDocument({ orderId }: { orderId: string }) {
 
   const boxes = (lines ?? []).filter((l) => l.boxNumber && l.status !== "removed" && l.status !== "missing")
   const d = order.delivery
+  // The columns this client chose for its delivery note (Settings → client → Delivery note columns), else just the description.
+  const columns = (profile?.deliveryColumns.length ? profile.deliveryColumns : DEFAULT_DELIVERY_COLUMNS).filter(
+    (k) => !/^Cd+$/.test(k) || fields.some((f) => f.code === k && f.active)
+  )
+  const boxById = new Map((orderBoxes ?? []).map((b) => [b.id, b]))
+  const cellText = (boxId: string | undefined, key: string) => {
+    const box = boxId ? boxById.get(boxId) : undefined
+    if (!box) return ""
+    if (key === "filingDates") return formatDateRange(box.filingDateFrom, box.filingDateTo)
+    const def = fields.find((f) => f.code === key)
+    if (def?.fieldType === "date" && box.customFields?.[key]) return formatDate(String(box.customFields[key]))
+    return deliveryCell(box, key, sizeName)
+  }
 
   return (
     <div className="mx-auto max-w-[190mm] space-y-6 bg-white p-8 text-sm text-black print:p-0">
@@ -77,6 +98,11 @@ export function DeliveryNoteDocument({ orderId }: { orderId: string }) {
             <tr className="border-b text-left">
               <th className="w-10 py-1 pr-2">#</th>
               <th className="py-1 pr-2">Box</th>
+              {columns.map((k) => (
+                <th key={k} className="py-1 pr-2">
+                  {deliveryColumnLabel(k, fields)}
+                </th>
+              ))}
               <th className="py-1">Received ✓</th>
             </tr>
           </thead>
@@ -85,6 +111,11 @@ export function DeliveryNoteDocument({ orderId }: { orderId: string }) {
               <tr key={l.id} className="border-b border-black/10 break-inside-avoid">
                 <td className="py-1.5 pr-2">{i + 1}</td>
                 <td className="py-1.5 pr-2 font-mono">{l.boxNumber}</td>
+                {columns.map((k) => (
+                  <td key={k} className="py-1.5 pr-2">
+                    {cellText(l.boxId, k)}
+                  </td>
+                ))}
                 <td className="py-1.5">☐</td>
               </tr>
             ))}

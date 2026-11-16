@@ -15,6 +15,10 @@ export interface BoxSearchInput {
   rackId?: string
   row?: number
   orderId?: string
+  /** Search one of the client's own fields (needs clientId): code (C1…), the text, exact or contains. */
+  cfCode?: string
+  cfValue?: string
+  cfMode?: "exact" | "contains"
   page?: number
   pageSize?: number
 }
@@ -32,6 +36,11 @@ function toSearchParams(input: BoxSearchInput): URLSearchParams {
   if (input.rackId) sp.set("rackId", input.rackId)
   if (input.row) sp.set("row", String(input.row))
   if (input.orderId) sp.set("orderId", input.orderId)
+  if (input.cfCode && input.cfValue) {
+    sp.set("cfCode", input.cfCode)
+    sp.set("cfValue", input.cfValue)
+    if (input.cfMode) sp.set("cfMode", input.cfMode)
+  }
   if (input.onHold !== undefined) sp.set("onHold", String(input.onHold))
   if (input.page) sp.set("page", String(input.page))
   if (input.pageSize) sp.set("pageSize", String(input.pageSize))
@@ -95,6 +104,7 @@ export interface CreateBoxesBatchInput {
   filingDateTo?: string
   destroyAfter?: string
   retentionCategory?: string
+  customFields?: Record<string, string>
   size: BoxSize
   orderId?: string
   orderNumber?: string
@@ -107,6 +117,75 @@ export function useCreateBoxesBatch() {
     mutationFn: async (input: CreateBoxesBatchInput): Promise<Box[]> =>
       parse(z.array(boxSchema), await apiClient.post("/boxes/batch", input)),
     onSuccess: () => invalidateBoxesAndShared(queryClient),
+  })
+}
+
+export interface ImportBoxRow {
+  description: string
+  department?: string
+  reference?: string
+  filingDateFrom: string
+  filingDateTo?: string
+  destroyAfter?: string
+  retentionCategory?: string
+  size?: string
+  /** The client's own fields by code: { C1: "Block 1", … } */
+  customFields?: Record<string, string>
+  palletNo?: string
+}
+
+export interface ImportBoxesInput {
+  clientId: string
+  clientName: string
+  rows: ImportBoxRow[]
+  /** Only check the rows, save nothing. */
+  dryRun?: boolean
+}
+
+const importResultSchema = z.object({ dryRun: z.boolean(), count: z.number(), boxes: z.array(boxSchema) })
+
+/** Bulk registration from a spreadsheet: all rows are saved, or (422, `ApiError.rowErrors`) none are. */
+export function useImportBoxes() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: ImportBoxesInput) => parse(importResultSchema, await apiClient.post("/boxes/import", input)),
+    onSuccess: (result) => {
+      if (!result.dryRun) invalidateBoxesAndShared(queryClient)
+    },
+  })
+}
+
+export interface BulkMoveRow {
+  /** Box barcode or box number. */
+  box: string
+  /** Shelf or position code, e.g. "A-1" or "A-1-3". */
+  location: string
+}
+
+const bulkMoveResultSchema = z.object({ dryRun: z.boolean(), count: z.number() })
+
+/** Move many boxes from a file: all moved, or (422, `ApiError.rowErrors`) none. */
+export function useBulkMove() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { rows: BulkMoveRow[]; dryRun?: boolean; reason?: string }) =>
+      parse(bulkMoveResultSchema, await apiClient.post("/boxes/bulk-move", input)),
+    onSuccess: (result) => {
+      if (!result.dryRun) invalidateBoxesAndShared(queryClient)
+    },
+  })
+}
+
+const resolveSchema = z.object({
+  items: z.array(z.object({ code: z.string(), box: boxSchema.optional(), problem: z.string().optional() })),
+})
+export type ResolvedBox = z.infer<typeof resolveSchema>["items"][number]
+
+/** Which box is behind each code of a file, and what stops it (other client, can't go on this kind of order …). */
+export function useResolveBoxes() {
+  return useMutation({
+    mutationFn: async (input: { codes: string[]; clientId?: string; orderType?: "collection" | "dispatch" | "destruction" | "digitize" }) =>
+      parse(resolveSchema, await apiClient.post("/boxes/resolve", input)),
   })
 }
 
@@ -178,6 +257,9 @@ export interface UpdateBoxDetailsInput {
   filingDateTo?: string
   destroyAfter?: string
   retentionCategory?: string
+  /** Only the client's own fields that change, by code; "" clears one. */
+  customFields?: Record<string, string>
+  palletNo?: string
   reason: string
 }
 

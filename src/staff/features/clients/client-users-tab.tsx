@@ -2,6 +2,10 @@
 
 import Link from "next/link"
 
+import { toast } from "sonner"
+
+import { useContactPermissions, useSetContactPermission } from "@/api/clientProfile"
+import { useCan } from "@/auth/useAuth"
 import { useClientCard } from "@/hooks/useClientCard"
 import type { DocusoftContact } from "@/store/docusoftApi"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +22,9 @@ function phoneOf(contact: DocusoftContact): string {
 // "Users" = all the contacts DocuSoft holds for this client (Table6 of the client card).
 export function ClientUsersTab({ clientId }: { clientId: string }) {
   const { contacts, needsFolder, isLoading, isError } = useClientCard(clientId)
+  const { data: permissions } = useContactPermissions(clientId)
+  const setPermission = useSetContactPermission(clientId)
+  const canEdit = useCan("settings.manage")
 
   if (needsFolder) {
     return (
@@ -59,9 +66,35 @@ export function ClientUsersTab({ clientId }: { clientId: string }) {
               )}
               {phone && <p className="text-muted-foreground">{phone}</p>}
             </div>
-            <div className="flex shrink-0 gap-1.5">
-              {contact["Main Contact"] === true && <Badge variant="outline">Main contact</Badge>}
-              {contact["Portal User"] === true && <Badge variant="outline">Portal user</Badge>}
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <div className="flex gap-1.5">
+                {contact["Main Contact"] === true && <Badge variant="outline">Main contact</Badge>}
+                {contact["Portal User"] === true && <Badge variant="outline">Portal user</Badge>}
+              </div>
+              {email && (
+                <div className="flex gap-4 text-xs">
+                  {(["canLoan", "canPurge"] as const).map((flag) => {
+                    const row = permissions?.find((p) => p.email === email.toLowerCase())
+                    const on = row ? row[flag] : true // no row = allowed
+                    return (
+                      <label key={flag} className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={!canEdit || setPermission.isPending}
+                          onChange={(e) =>
+                            setPermission.mutate(
+                              { email, [flag]: e.target.checked },
+                              { onError: (err) => toast.error(err instanceof Error ? err.message : "Couldn't save") }
+                            )
+                          }
+                        />
+                        {flag === "canLoan" ? "May borrow" : "May destroy"}
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )

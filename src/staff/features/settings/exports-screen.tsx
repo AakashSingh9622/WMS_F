@@ -3,6 +3,7 @@
 import { useState } from "react"
 
 import { useCan } from "@/auth/useAuth"
+import { useWarehouseRacks, useWarehouses } from "@/api/warehouses"
 import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 import { Download } from "@/components/icons"
 import { Button } from "@/components/ui/button"
@@ -20,6 +21,12 @@ export function ExportsScreen() {
   const [clientId, setClientId] = useState(ALL)
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
+  // Inventory only: narrow to one warehouse / rack / shelf row (Docbox "Exportar archivo").
+  const { data: warehouses } = useWarehouses()
+  const [warehouseId, setWarehouseId] = useState(ALL)
+  const [rackId, setRackId] = useState(ALL)
+  const [row, setRow] = useState("")
+  const { data: racks } = useWarehouseRacks(warehouseId === ALL ? "" : warehouseId)
   const clientName = (id: string) =>
     id === ALL ? "All clients" : (clients?.find((c) => c.ClientId === id)?.Client ?? id)
 
@@ -28,6 +35,11 @@ export function ExportsScreen() {
     if (clientId !== ALL) sp.set("clientId", clientId)
     if (withDates && from) sp.set("from", from)
     if (withDates && to) sp.set("to", to)
+    if (kind === "inventory") {
+      if (warehouseId !== ALL) sp.set("warehouseId", warehouseId)
+      if (warehouseId !== ALL && rackId !== ALL) sp.set("rackId", rackId)
+      if (warehouseId !== ALL && rackId !== ALL && /^\d+$/.test(row)) sp.set("row", row)
+    }
     const q = sp.toString()
     return `/api/exports/${kind}.csv${q ? `?${q}` : ""}`
   }
@@ -45,6 +57,20 @@ export function ExportsScreen() {
       label: "Movements",
       help: "Put-aways, moves, dispatches, returns… in the date range.",
       dates: true,
+      show: true,
+    },
+    {
+      kind: "loans",
+      label: "Loan register",
+      help: "Everything out with clients on a dispatch order: who asked, when, and the original shelf (use the dates for when it was issued).",
+      dates: true,
+      show: true,
+    },
+    {
+      kind: "toshelve",
+      label: "Returns to shelve",
+      help: "Boxes that came back and wait at Goods-In, with the shelf they were taken from.",
+      dates: false,
       show: true,
     },
     {
@@ -97,6 +123,69 @@ export function ExportsScreen() {
         </Field>
       </div>
       <FieldDescription>Leave the dates empty for everything.</FieldDescription>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field>
+          <FieldLabel htmlFor="ex-wh">Inventory: warehouse</FieldLabel>
+          <Select
+            value={warehouseId}
+            onValueChange={(v) => {
+              setWarehouseId(v ?? ALL)
+              setRackId(ALL)
+              setRow("")
+            }}
+          >
+            <SelectTrigger id="ex-wh">
+              <SelectValue
+                getLabel={(id) => (id === ALL ? "All warehouses" : (warehouses?.find((w) => w.id === id)?.name ?? id))}
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All warehouses</SelectItem>
+              {warehouses?.map((w) => (
+                <SelectItem key={w.id} value={w.id}>
+                  {w.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="ex-rack">Rack</FieldLabel>
+          <Select
+            value={rackId}
+            onValueChange={(v) => {
+              setRackId(v ?? ALL)
+              setRow("")
+            }}
+            disabled={warehouseId === ALL}
+          >
+            <SelectTrigger id="ex-rack">
+              <SelectValue getLabel={(id) => (id === ALL ? "All racks" : (racks?.find((r) => r.id === id)?.label ?? id))} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All racks</SelectItem>
+              {racks?.map((r) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="ex-row">Shelf row</FieldLabel>
+          <Input
+            id="ex-row"
+            inputMode="numeric"
+            placeholder="All rows"
+            value={row}
+            disabled={rackId === ALL}
+            onChange={(e) => setRow(e.target.value.replace(/\D/g, ""))}
+          />
+        </Field>
+      </div>
+      <FieldDescription>These three only narrow the Inventory download.</FieldDescription>
 
       <ul className="bg-card divide-y rounded-2xl border">
         {exports

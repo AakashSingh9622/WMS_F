@@ -14,6 +14,7 @@ export const staffNavItems: NavItem[] = [
   { href: "/app/warehouses", label: "Warehouses" },
   { href: "/app/clients", label: "Clients" },
   { href: "/app/exceptions", label: "Exceptions", permission: "orders.approve" },
+  { href: "/app/reports", label: "Reports" },
   { href: "/app/records", label: "Records", permission: "records.manage" },
   { href: "/app/billing", label: "Billing", permission: "billing.view" },
   { href: "/app/audit", label: "Audit log", permission: "audit.read" },

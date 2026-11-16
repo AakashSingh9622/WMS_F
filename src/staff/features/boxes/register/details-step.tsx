@@ -5,6 +5,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { useBoxLengths, useBoxSizeName, useBoxSizes } from "@/api/settings"
+import { useCustomFields } from "@/api/customFields"
 import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 import { useCorrectRegisteredBoxes, useCreateBoxesBatch, type CorrectBoxesInput } from "@/api/boxes"
 import { BarcodeLabel } from "@/components/barcode-label"
@@ -29,6 +30,8 @@ export interface RegisterDraft {
   destroyAfter: string
   retentionCategory: string
   size: BoxSize
+  /** The client's own fields by code ({ C1: "…" }) -- shown for a new batch only. */
+  customFields: Record<string, string>
 }
 
 // A function (not a constant) so "today" is the day the form is opened, not the day the app was loaded.
@@ -44,6 +47,7 @@ export const emptyDraft = (): RegisterDraft => ({
   destroyAfter: "",
   retentionCategory: "",
   size: "standard",
+  customFields: {},
 })
 
 /** The form, filled in from a registered batch (all boxes of a batch share these details). */
@@ -60,7 +64,41 @@ function draftFromBoxes(boxes: Box[]): RegisterDraft {
     destroyAfter: b.destroyAfter ?? "",
     retentionCategory: b.retentionCategory ?? "",
     size: b.size,
+    customFields: {},
   }
+}
+
+/** The client's own fields (Settings → Custom fields) as inputs; nothing is shown when the client has none. */
+function CustomFieldsSection({
+  clientId,
+  values,
+  onChange,
+}: {
+  clientId: string
+  values: Record<string, string>
+  onChange: (values: Record<string, string>) => void
+}) {
+  const { data: fields } = useCustomFields(clientId)
+  if (!fields || fields.length === 0) return null
+  return (
+    <Section title="Client's own fields" description="The extra details this client keeps about its boxes.">
+      {fields.map((f) => (
+        <Field key={f.code}>
+          <FieldLabel htmlFor={`cf-${f.code}`}>
+            {f.name}
+            {f.required ? "" : " (optional)"}
+          </FieldLabel>
+          <Input
+            id={`cf-${f.code}`}
+            type={f.fieldType === "date" ? "date" : f.fieldType === "number" ? "number" : "text"}
+            step={f.fieldType === "number" ? "any" : undefined}
+            value={values[f.code] ?? ""}
+            onChange={(e) => onChange({ ...values, [f.code]: e.target.value })}
+          />
+        </Field>
+      ))}
+    </Section>
+  )
 }
 
 const TEXT_FIELDS = [
@@ -103,9 +141,12 @@ function DetailsForm({
   minQuantity = 1,
   orderLabel,
   orderHint,
+  showCustomFields = false,
 }: {
   draft: RegisterDraft
   set: <K extends keyof RegisterDraft>(key: K, value: RegisterDraft[K]) => void
+  /** New batch only: the correct-batch call can't change a client's own fields. */
+  showCustomFields?: boolean
   lockedClientId?: string
   /** Why client and size can't change any more (some boxes are already on a shelf). */
   clientSizeLock?: string
@@ -212,6 +253,14 @@ function DetailsForm({
           <Input id="reference" value={draft.reference} onChange={(e) => set("reference", e.target.value)} />
         </Field>
       </Section>
+
+      {showCustomFields && draft.clientId && (
+        <CustomFieldsSection
+          clientId={draft.clientId}
+          values={draft.customFields ?? {}}
+          onChange={(v) => set("customFields", v)}
+        />
+      )}
 
       <Section
         title="Dates and retention"
@@ -407,6 +456,7 @@ function NewBatch({
         filingDateTo: draft.filingDateTo || undefined,
         destroyAfter: draft.destroyAfter || undefined,
         retentionCategory: draft.retentionCategory || undefined,
+        customFields: draft.customFields && Object.keys(draft.customFields).length ? draft.customFields : undefined,
         size: draft.size,
         orderId,
         orderNumber: orderLabel,
@@ -425,6 +475,7 @@ function NewBatch({
         lockedClientId={lockedClientId}
         orderLabel={orderLabel}
         orderHint={orderHint}
+        showCustomFields
       />
       <SummaryPanel draft={draft} clientName={clientName} error={error}>
         <Button type="button" className="w-full" onClick={submit} disabled={createBatch.isPending}>

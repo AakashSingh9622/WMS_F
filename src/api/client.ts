@@ -11,12 +11,15 @@ const API_PREFIX = "/api"
 export class ApiError extends Error {
   status: number
   code?: string
+  /** Per-row problems of a bulk import: [{ row, message }]. */
+  rowErrors?: { row: number; message: string }[]
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, rowErrors?: { row: number; message: string }[]) {
     super(message)
     this.name = "ApiError"
     this.status = status
     this.code = code
+    this.rowErrors = rowErrors
   }
 }
 
@@ -38,7 +41,7 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, body.message ?? res.statusText, body.code)
+    throw new ApiError(res.status, body.message ?? res.statusText, body.code, Array.isArray(body.errors) ? body.errors : undefined)
   }
 
   if (res.status === 204) return undefined
