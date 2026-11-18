@@ -48,6 +48,9 @@ const nextConfig: NextConfig = {
       // Per-client custom box fields, and the reports page.
       { source: "/api/custom-fields", destination: `${BACKEND_API_URL}/api/custom-fields` },
       { source: "/api/custom-fields/:path*", destination: `${BACKEND_API_URL}/api/custom-fields/:path*` },
+      // A client's expedientes (Docbox "Expedientes - Clientes").
+      { source: "/api/expedientes", destination: `${BACKEND_API_URL}/api/expedientes` },
+      { source: "/api/expedientes/:path*", destination: `${BACKEND_API_URL}/api/expedientes/:path*` },
       { source: "/api/reports/:path*", destination: `${BACKEND_API_URL}/api/reports/:path*` },
       // Client details we keep locally (SAP code, tax ID, address, delivery-note columns) and contact permissions.
       { source: "/api/clients/:clientId/profile", destination: `${BACKEND_API_URL}/api/clients/:clientId/profile` },

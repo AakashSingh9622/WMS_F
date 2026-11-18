@@ -15,9 +15,22 @@ export interface StripePayment {
   amount_received?: number
   currency?: string
   status?: string
-  created?: number // unix seconds
+  created?: number | string // Stripe sends unix seconds; the DocuSoft proxy may send milliseconds or a date text
   description?: string
   [key: string]: unknown
+}
+
+/** A Stripe `created` value as an ISO date, whatever form it came in; undefined when it isn't a usable date. */
+export function stripeCreatedISO(created: unknown): string | undefined {
+  if (created === undefined || created === null || created === "") return undefined
+  let date: Date
+  if (typeof created === "number" || (typeof created === "string" && /^\d+(\.\d+)?$/.test(created.trim()))) {
+    const n = Number(created)
+    date = new Date(n < 1e11 ? n * 1000 : n) // seconds (10 digits) or milliseconds (13 digits)
+  } else {
+    date = new Date(String(created))
+  }
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString()
 }
 
 async function getStripePayments(customerId: string): Promise<StripePayment[]> {

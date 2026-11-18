@@ -12,22 +12,59 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { downloadCsv, parseCsv } from "@/lib/csv"
+import { TemplateDownload } from "@/components/template-download"
+import { downloadCsv } from "@/lib/csv"
+import { readTable, SPREADSHEET_ACCEPT } from "@/lib/spreadsheet"
 
 const MAX_ROWS = 500
-const norm = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, "")
+const norm = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
 const BOX_HEADERS = ["box", "boxnumber", "barcode", "boxbarcode", "internalcode", "codinterno"]
-const LOCATION_HEADERS = ["location", "newlocation", "shelf", "position", "ubicacion"]
+const LOCATION_HEADERS = ["location", "newlocation", "ubicacion"]
+// Docbox's own location columns, used instead of one Location column (e.g. a file exported from Settings → Exports).
+const PART_HEADERS: Record<"site" | "warehouse" | "floor" | "aisle" | "module" | "shelf", string[]> = {
+  site: ["site", "sede", "headoffice"],
+  warehouse: ["warehouse", "almacen"],
+  floor: ["floor", "blockfloor", "block", "planta", "bloqueplanta"],
+  aisle: ["aisle", "corridor", "pasillo"],
+  module: ["module", "rackmodule", "shelvingunitmodule", "shelvingunit", "rack", "estanteriamodulo", "estanteria", "modulo"],
+  shelf: ["shelf", "rowshelf", "row", "fila", "filabalda", "balda"],
+}
 
 function toRows(grid: string[][]): { rows: BulkMoveRow[]; problem?: string } {
   const [head, ...body] = grid
   if (!head) return { rows: [], problem: "The file is empty." }
   const box = head.findIndex((h) => BOX_HEADERS.includes(norm(h)))
   const location = head.findIndex((h) => LOCATION_HEADERS.includes(norm(h)))
-  if (box < 0 || location < 0) return { rows: [], problem: "The file needs the columns Box and Location. Use the template." }
+  const part = Object.fromEntries(
+    Object.entries(PART_HEADERS).map(([key, names]) => [key, head.findIndex((h) => names.includes(norm(h)))]),
+  ) as Record<keyof typeof PART_HEADERS, number>
+  const byParts = part.module >= 0 && part.shelf >= 0 // the Docbox columns win when a file has both
+  if (box < 0 || (location < 0 && !byParts)) {
+    return { rows: [], problem: "The file needs a Box column and either a Location column or Module and Shelf columns. Use the template." }
+  }
   if (body.length === 0) return { rows: [], problem: "The file has a header but no rows." }
   if (body.length > MAX_ROWS) return { rows: [], problem: `At most ${MAX_ROWS} rows per file — split it.` }
-  return { rows: body.map((c) => ({ box: (c[box] ?? "").trim(), location: (c[location] ?? "").trim() })) }
+  const cell = (c: string[], at: number) => (at >= 0 ? (c[at] ?? "").trim() : "")
+  return {
+    rows: body.map((c) =>
+      byParts
+        ? {
+            box: cell(c, box),
+            site: cell(c, part.site),
+            warehouse: cell(c, part.warehouse),
+            floor: cell(c, part.floor),
+            aisle: cell(c, part.aisle),
+            module: cell(c, part.module),
+            shelf: cell(c, part.shelf),
+          }
+        : { box: cell(c, box), location: cell(c, location) },
+    ),
+  }
 }
 
 /** Change the location of many boxes from a CSV file (Docbox "Cambio de Ubicación"): checked first, then all or nothing. */
@@ -56,13 +93,13 @@ export function BulkMoveScreen() {
     setDone(null)
     if (!file) return
     setFileName(file.name)
-    if (!/\.(csv|txt)$/i.test(file.name)) {
-      setFileProblem("Save the sheet as CSV first (Excel: File → Save As → CSV UTF-8), then choose it here.")
-      return
+    try {
+      const parsed = toRows(await readTable(file))
+      setRows(parsed.rows)
+      setFileProblem(parsed.problem ?? "")
+    } catch (err) {
+      setFileProblem(err instanceof Error ? err.message : "The file couldn't be read.")
     }
-    const parsed = toRows(parseCsv(await file.text()))
-    setRows(parsed.rows)
-    setFileProblem(parsed.problem ?? "")
   }
 
   const send = (dryRun: boolean) => {
@@ -94,7 +131,7 @@ export function BulkMoveScreen() {
       <PageHeader
         icon={ArrowRight}
         title="Move boxes from a file"
-        description="Change the shelf of many boxes at once from a spreadsheet saved as CSV. Every row is checked first — if one is wrong, nothing moves."
+        description="Change the shelf of many boxes at once from an Excel (.xlsx) or CSV file. Every row is checked first — if one is wrong, nothing moves."
         actions={
           <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/app/boxes" />}>
             Find a box
@@ -116,15 +153,13 @@ export function BulkMoveScreen() {
           <CardDescription>
             One row per box. <b>Box</b> is the barcode or box number. <b>Location</b> is the new shelf or position, like
             A-1 (rack A, shelf 1) or A-1-3 (also position 3). A shelf picks the first position with room.
+            <br />
+            Or use Docbox&apos;s columns instead of Location: <b>Module</b> and <b>Shelf</b> (and optionally Warehouse, Floor,
+            Aisle). A file exported from Settings → Exports already has them — edit the shelf there and upload it here.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button
-            variant="outline"
-            onClick={() => downloadCsv("box-move-template.csv", [["Box", "Location"], ["BX00000001", "A-1"]])}
-          >
-            <Download /> Download template (CSV)
-          </Button>
+          <TemplateDownload name="box-move-template" rows={[["Box", "Location"], ["BX00000001", "A-1"]]} />
         </CardContent>
       </Card>
 
@@ -134,12 +169,12 @@ export function BulkMoveScreen() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Field>
-            <FieldLabel htmlFor="mv-file">CSV file</FieldLabel>
+            <FieldLabel htmlFor="mv-file">Excel or CSV file</FieldLabel>
             <input
               id="mv-file"
               ref={fileInput}
               type="file"
-              accept=".csv,text/csv"
+              accept={SPREADSHEET_ACCEPT}
               onChange={(e) => void onFile(e.target.files?.[0])}
               className="text-sm"
             />
@@ -193,6 +228,18 @@ export function BulkMoveScreen() {
         <Button disabled={rows.length === 0 || !checked || move.isPending} onClick={() => send(false)}>
           Move {rows.length > 0 ? `${rows.length} boxes` : ""}
         </Button>
+        {(rows.length > 0 || rowErrors.length > 0 || fileProblem || done !== null) && (
+          <Button
+            variant="ghost"
+            disabled={move.isPending}
+            onClick={() => {
+              reset()
+              setDone(null)
+            }}
+          >
+            Clear
+          </Button>
+        )}
       </div>
     </div>
   )

@@ -40,15 +40,16 @@ export function BoxDetailHeader({ boxId }: { boxId: string }) {
             navigator.clipboard?.writeText(box.barcode)
             toast.success("Barcode copied")
           }}
+          title="Copy the barcode"
           className="text-muted-foreground hover:text-foreground flex items-center gap-1 font-mono text-xs"
         >
-          {box.barcode}
+          <span className="font-sans">Barcode</span> {box.barcode}
           <Copy className="size-3" />
         </button>
         <BoxStatusBadge status={box.status} />
         {box.onHold && (
-          <Badge variant="outline" className="border-status-hold text-status-hold">
-            On hold — {box.holdReason}
+          <Badge variant="outline" className="border-status-hold text-status-hold max-w-xs" title={box.holdReason ?? undefined}>
+            <span className="truncate">On hold — {box.holdReason}</span>
           </Badge>
         )}
         {!box.labelPrinted && (
@@ -76,7 +77,7 @@ export function BoxDetailHeader({ boxId }: { boxId: string }) {
           {box.clientName}
         </Link>
         {box.locationPath ? (
-          <StoredLocation path={box.locationPath} />
+          <StoredLocation path={box.locationPath} linkable />
         ) : (
           <span>{box.status === "missing" ? "Last known location is in the history" : "Not allocated to a slot"}</span>
         )}

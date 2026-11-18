@@ -5,8 +5,8 @@ import { toast } from "sonner"
 
 import { useResolveBoxes, type ResolvedBox } from "@/api/boxes"
 import type { OrderType } from "@/api/types"
-import { Button } from "@/components/ui/button"
-import { downloadCsv, parseCsv } from "@/lib/csv"
+import { TemplateDownload } from "@/components/template-download"
+import { readTable, SPREADSHEET_ACCEPT } from "@/lib/spreadsheet"
 
 const BOX_HEADERS = ["box", "boxnumber", "barcode", "boxbarcode", "internalcode", "codinterno"]
 const norm = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, "")
@@ -36,11 +36,14 @@ export function BoxListImport({
     setProblems([])
     setSummary("")
     if (!file) return
-    if (!/\.(csv|txt)$/i.test(file.name)) {
-      toast.error("Save the sheet as CSV first (Excel: File → Save As → CSV UTF-8).")
+    let grid: string[][]
+    try {
+      grid = await readTable(file)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "The file couldn't be read.")
+      if (fileInput.current) fileInput.current.value = ""
       return
     }
-    const grid = parseCsv(await file.text())
     const headerAt = (grid[0] ?? []).findIndex((h) => BOX_HEADERS.includes(norm(h)))
     const col = headerAt >= 0 ? headerAt : 0
     const codes = (headerAt >= 0 ? grid.slice(1) : grid).map((r) => (r[col] ?? "").trim()).filter(Boolean)
@@ -68,18 +71,16 @@ export function BoxListImport({
         <input
           ref={fileInput}
           type="file"
-          accept=".csv,text/csv"
+          accept={SPREADSHEET_ACCEPT}
           className="text-sm"
-          aria-label="CSV file of box codes"
+          aria-label="Excel or CSV file of box codes"
           disabled={resolve.isPending}
           onChange={(e) => void onFile(e.target.files?.[0])}
         />
-        <Button variant="ghost" size="sm" onClick={() => downloadCsv("box-list-template.csv", [["Box"], ["BX00000001"]])}>
-          Template
-        </Button>
+        <TemplateDownload name="box-list-template" rows={[["Box"], ["BX00000001"]]} size="sm" />
       </div>
       <p className="text-muted-foreground text-xs">
-        A CSV with a Box column (barcode or box number). The boxes found are added to the selection below.
+        An Excel or CSV file with a Box column (barcode or box number). The boxes found are added to the selection below.
       </p>
       {summary && <p className="text-sm">{summary}</p>}
       {problems.length > 0 && (

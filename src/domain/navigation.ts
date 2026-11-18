@@ -41,7 +41,7 @@ export const routeLabels: Record<string, string> = {
   pick: "Pick",
   receive: "Receive",
   warehouses: "Warehouses",
-  racks: "Racks",
+  racks: "Modules",
   clients: "Clients",
   activity: "Activity",
   users: "Users",

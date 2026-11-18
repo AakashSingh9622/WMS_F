@@ -117,7 +117,7 @@ function AddSizeCard() {
               <LengthInput id="new-size-length" value={length} unit={unit} onValue={setLength} onUnit={setUnit} />
               <FieldDescription>
                 {cm
-                  ? `= ${formatLength(cm)} of a rack cell`
+                  ? `= ${formatLength(cm)} of a module cell`
                   : `The side of the box along the shelf — up to ${MAX_CM} cm.`}
               </FieldDescription>
             </Field>

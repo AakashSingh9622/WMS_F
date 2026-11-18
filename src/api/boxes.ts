@@ -9,6 +9,18 @@ import type { Box, BoxSize, BoxStatus, Order, SlotSuggestion } from "@/api/types
 export interface BoxSearchInput {
   q?: string
   clientId?: string
+  /** One of the client's expedientes. */
+  expedienteId?: string
+  /** Where it is (Docbox Busqueda): site, warehouse (code or name), floor, aisle, module (code or label) — typed text, any letter case. */
+  site?: string
+  warehouse?: string
+  zone?: string
+  aisle?: string
+  module?: string
+  /** Pallet / container (part of the number or type). */
+  palletNo?: string
+  containerNo?: string
+  containerType?: string
   status?: BoxStatus[]
   onHold?: boolean
   warehouseId?: string
@@ -32,6 +44,10 @@ function toSearchParams(input: BoxSearchInput): URLSearchParams {
   const sp = new URLSearchParams()
   if (input.q) sp.set("q", input.q)
   if (input.clientId) sp.set("clientId", input.clientId)
+  if (input.expedienteId) sp.set("expedienteId", input.expedienteId)
+  for (const key of ["site", "warehouse", "zone", "aisle", "module", "palletNo", "containerNo", "containerType"] as const) {
+    if (input[key]) sp.set(key, input[key] as string)
+  }
   if (input.warehouseId) sp.set("warehouseId", input.warehouseId)
   if (input.rackId) sp.set("rackId", input.rackId)
   if (input.row) sp.set("row", String(input.row))
@@ -105,6 +121,18 @@ export interface CreateBoxesBatchInput {
   destroyAfter?: string
   retentionCategory?: string
   customFields?: Record<string, string>
+  palletNo?: string
+  /** Docbox "NºContenedor" / "Tipo Contenedor" (template NCE, TYPECE): free text. */
+  containerNo?: string
+  containerType?: string
+  comments?: string
+  entryDate?: string
+  /** Box number this one is a copy of (shown in its History). */
+  duplicateOf?: string
+  /** The client's expediente (needed when the client has any). */
+  expedienteId?: string
+  /** Put the boxes on a shelf as they are registered (Docbox's location in the same form). Module + shelf are what place them. */
+  place?: { site?: string; warehouse?: string; floor?: string; aisle?: string; module?: string; shelf?: string }
   size: BoxSize
   orderId?: string
   orderNumber?: string
@@ -132,17 +160,43 @@ export interface ImportBoxRow {
   /** The client's own fields by code: { C1: "Block 1", … } */
   customFields?: Record<string, string>
   palletNo?: string
+  /** Docbox "NºContenedor" / "Tipo Contenedor" (template NCE, TYPECE): free text. */
+  containerNo?: string
+  containerType?: string
+  /** Free-text remarks (Docbox "Observaciones"). Empty clears them on an edit. */
+  comments?: string
+  /** Day the box came in, YYYY-MM-DD (a file row or an edit; the import also takes one date for the whole file). */
+  entryDate?: string
+  /** Where to put the box (all optional; module + shelf are what place it): Docbox's Sede / Almacén / Planta / Pasillo / Módulo / Balda. */
+  site?: string
+  warehouse?: string
+  floor?: string
+  aisle?: string
+  module?: string
+  shelf?: string
 }
 
 export interface ImportBoxesInput {
   clientId: string
   clientName: string
   rows: ImportBoxRow[]
+  /** The client's expediente the whole file goes into (needed when the client has any). */
+  expedienteId?: string
+  /** One entry date for the whole file (Docbox "Fecha Entrada"); today when left out. A row can carry its own. */
+  entryDate?: string
   /** Only check the rows, save nothing. */
   dryRun?: boolean
 }
 
-const importResultSchema = z.object({ dryRun: z.boolean(), count: z.number(), boxes: z.array(boxSchema) })
+const importResultSchema = z.object({
+  dryRun: z.boolean(),
+  count: z.number(),
+  /** How many of them are (or, on a check, would be) put on a shelf because the row had a location. */
+  placed: z.number().default(0),
+  /** The boxes were registered but putting them on shelves failed — say why. */
+  placeProblem: z.string().optional(),
+  boxes: z.array(boxSchema),
+})
 
 /** Bulk registration from a spreadsheet: all rows are saved, or (422, `ApiError.rowErrors`) none are. */
 export function useImportBoxes() {
@@ -158,8 +212,15 @@ export function useImportBoxes() {
 export interface BulkMoveRow {
   /** Box barcode or box number. */
   box: string
-  /** Shelf or position code, e.g. "A-1" or "A-1-3". */
-  location: string
+  /** Shelf or position code, e.g. "A-1" or "A-1-3". Leave empty when the module / shelf columns are used. */
+  location?: string
+  /** Docbox's separate columns, used instead of `location`. */
+  site?: string
+  warehouse?: string
+  floor?: string
+  aisle?: string
+  module?: string
+  shelf?: string
 }
 
 const bulkMoveResultSchema = z.object({ dryRun: z.boolean(), count: z.number() })
@@ -201,6 +262,12 @@ export interface CorrectBoxesInput {
   filingDateTo?: string
   destroyAfter?: string
   retentionCategory?: string
+  palletNo?: string
+  /** Docbox "NºContenedor" / "Tipo Contenedor" (template NCE, TYPECE): free text. */
+  containerNo?: string
+  containerType?: string
+  comments?: string
+  entryDate?: string
 }
 
 /** Register wizard, back on step 1: fix the details of the whole batch at once (client / size only while not filed). */
@@ -260,6 +327,13 @@ export interface UpdateBoxDetailsInput {
   /** Only the client's own fields that change, by code; "" clears one. */
   customFields?: Record<string, string>
   palletNo?: string
+  /** Docbox "NºContenedor" / "Tipo Contenedor" (template NCE, TYPECE): free text. */
+  containerNo?: string
+  containerType?: string
+  /** Free-text remarks (Docbox "Observaciones"). Empty clears them on an edit. */
+  comments?: string
+  /** Day the box came in, YYYY-MM-DD (a file row or an edit; the import also takes one date for the whole file). */
+  entryDate?: string
   reason: string
 }
 
@@ -284,7 +358,8 @@ export function usePlaceBoxHold() {
 export function useReleaseBoxHold() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (boxId: string): Promise<Box> => parse(boxSchema, await apiClient.delete(`/boxes/${boxId}/hold`)),
+    mutationFn: async ({ boxId, reason }: { boxId: string; reason: string }): Promise<Box> =>
+      parse(boxSchema, await apiClient.delete(`/boxes/${boxId}/hold?reason=${encodeURIComponent(reason)}`)),
     onSuccess: () => invalidateBoxesAndShared(queryClient),
   })
 }
@@ -386,6 +461,34 @@ export function useAddBoxContent() {
         docusoftDocumentId?: string
       }
     }) => parse(boxContentSchema, await apiClient.post(`/boxes/${boxId}/contents`, input)),
+    onSuccess: () => invalidateBoxesAndShared(queryClient),
+  })
+}
+
+export interface BoxContentInput {
+  description: string
+  reference?: string
+  dateFrom?: string
+  dateTo?: string
+  docusoftDocumentId?: string
+}
+
+/** Docbox "Modificar" on a record: change its details (what is sent replaces the record; leave a field out to clear it). */
+export function useUpdateBoxContent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ boxId, contentId, input }: { boxId: string; contentId: string; input: BoxContentInput }) =>
+      parse(boxContentSchema, await apiClient.patch(`/boxes/${boxId}/contents/${contentId}`, input)),
+    onSuccess: () => invalidateBoxesAndShared(queryClient),
+  })
+}
+
+/** Move a record into another box of the same client (box number or barcode). */
+export function useMoveBoxContent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ boxId, contentId, toBox, reason }: { boxId: string; contentId: string; toBox: string; reason?: string }) =>
+      parse(boxContentSchema, await apiClient.post(`/boxes/${boxId}/contents/${contentId}/move`, { toBox, reason })),
     onSuccess: () => invalidateBoxesAndShared(queryClient),
   })
 }

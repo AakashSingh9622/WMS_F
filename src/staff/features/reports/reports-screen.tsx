@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 
-import { useArchiveReport, useLoansReport } from "@/api/reports"
+import { useArchiveReport, useInterfilingReport, useLoansReport } from "@/api/reports"
+import { PaginationFooter } from "@/components/data-table"
 import { Download, ScrollText } from "@/components/icons"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -29,10 +30,17 @@ export function ReportsScreen() {
   const scope = clientId === ALL ? undefined : clientId
 
   const loans = useLoansReport({ clientId: scope, from: from || undefined, to: to || undefined })
+  // The interfiling page goes back to 1 whenever the client or status filter changes.
+  const [interState, setInterState] = useState({ key: "", page: 1 })
+  const interKey = `${clientId}|${status}`
+  const interPage = interState.key === interKey ? interState.page : 1
+  const setInterPage = (page: number) => setInterState({ key: interKey, page })
+  const INTER_PAGE_SIZE = 25
+  const interfiling = useInterfilingReport({ clientId: scope, status: status === ALL ? undefined : status, page: interPage, pageSize: INTER_PAGE_SIZE })
   const archive = useArchiveReport({ clientId: scope, status: status === ALL ? undefined : status })
 
   const loanRows = loans.data?.rows ?? []
-  const sum = (key: "physicalUrgent" | "physicalNormal" | "digitalUrgent" | "digitalNormal" | "orders" | "boxes") =>
+  const sum = (key: "physicalUrgent" | "physicalNormal" | "physicalSuperior" | "digitalUrgent" | "digitalNormal" | "digitalSuperior" | "fax" | "orders" | "boxes") =>
     loanRows.reduce((n, r) => n + r[key], 0)
   const archiveRows = archive.data?.rows ?? []
   const totalBoxes = archiveRows.reduce((n, r) => n + r.boxes, 0)
@@ -42,7 +50,7 @@ export function ReportsScreen() {
       <PageHeader
         icon={ScrollText}
         title="Reports"
-        description="Requests by type and urgency, and what is in the archive, per client."
+        description="Requests by type and loan type, and what is in the archive, per client."
       />
 
       <div className="bg-card grid gap-4 rounded-2xl border p-4 shadow-xs sm:grid-cols-4">
@@ -91,7 +99,7 @@ export function ReportsScreen() {
       <Card>
         <CardHeader className="flex-row items-start justify-between gap-4">
           <div>
-            <CardTitle className="text-base">Requests by type and urgency</CardTitle>
+            <CardTitle className="text-base">Requests by type and loan type</CardTitle>
             <CardDescription>
               Physical = boxes sent out (dispatch). Digital = scanned (digitize). Cancelled and rejected requests are left out.
             </CardDescription>
@@ -102,8 +110,8 @@ export function ReportsScreen() {
             disabled={loanRows.length === 0}
             onClick={() =>
               downloadCsv("requests-report.csv", [
-                ["Client", "Client id", "Physical urgent", "Physical normal", "Digital urgent", "Digital normal", "Orders", "Boxes"],
-                ...loanRows.map((r) => [r.clientName, r.clientId, r.physicalUrgent, r.physicalNormal, r.digitalUrgent, r.digitalNormal, r.orders, r.boxes].map(String)),
+                ["Client", "Client id", "Physical normal", "Physical urgent", "Physical superior", "Digital normal", "Digital urgent", "Digital superior", "By fax", "Orders", "Boxes"],
+                ...loanRows.map((r) => [r.clientName, r.clientId, r.physicalNormal, r.physicalUrgent, r.physicalSuperior, r.digitalNormal, r.digitalUrgent, r.digitalSuperior, r.fax, r.orders, r.boxes].map(String)),
               ])
             }
           >
@@ -120,10 +128,13 @@ export function ReportsScreen() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Client</TableHead>
-                  <TableHead className="text-right">Physical urgent</TableHead>
                   <TableHead className="text-right">Physical normal</TableHead>
-                  <TableHead className="text-right">Digital urgent</TableHead>
+                  <TableHead className="text-right">Physical urgent</TableHead>
+                  <TableHead className="text-right">Physical superior</TableHead>
                   <TableHead className="text-right">Digital normal</TableHead>
+                  <TableHead className="text-right">Digital urgent</TableHead>
+                  <TableHead className="text-right">Digital superior</TableHead>
+                  <TableHead className="text-right">By fax</TableHead>
                   <TableHead className="text-right">Boxes</TableHead>
                 </TableRow>
               </TableHeader>
@@ -131,10 +142,13 @@ export function ReportsScreen() {
                 {loanRows.map((r) => (
                   <TableRow key={r.clientId}>
                     <TableCell className="font-medium">{r.clientName}</TableCell>
-                    <TableCell className="text-right">{r.physicalUrgent}</TableCell>
                     <TableCell className="text-right">{r.physicalNormal}</TableCell>
-                    <TableCell className="text-right">{r.digitalUrgent}</TableCell>
+                    <TableCell className="text-right">{r.physicalUrgent}</TableCell>
+                    <TableCell className="text-right">{r.physicalSuperior}</TableCell>
                     <TableCell className="text-right">{r.digitalNormal}</TableCell>
+                    <TableCell className="text-right">{r.digitalUrgent}</TableCell>
+                    <TableCell className="text-right">{r.digitalSuperior}</TableCell>
+                    <TableCell className="text-right">{r.fax}</TableCell>
                     <TableCell className="text-right">{r.boxes}</TableCell>
                   </TableRow>
                 ))}
@@ -142,10 +156,13 @@ export function ReportsScreen() {
               <TableFooter>
                 <TableRow>
                   <TableCell>Total</TableCell>
-                  <TableCell className="text-right">{sum("physicalUrgent")}</TableCell>
                   <TableCell className="text-right">{sum("physicalNormal")}</TableCell>
-                  <TableCell className="text-right">{sum("digitalUrgent")}</TableCell>
+                  <TableCell className="text-right">{sum("physicalUrgent")}</TableCell>
+                  <TableCell className="text-right">{sum("physicalSuperior")}</TableCell>
                   <TableCell className="text-right">{sum("digitalNormal")}</TableCell>
+                  <TableCell className="text-right">{sum("digitalUrgent")}</TableCell>
+                  <TableCell className="text-right">{sum("digitalSuperior")}</TableCell>
+                  <TableCell className="text-right">{sum("fax")}</TableCell>
                   <TableCell className="text-right">{sum("boxes")}</TableCell>
                 </TableRow>
               </TableFooter>
@@ -209,6 +226,60 @@ export function ReportsScreen() {
                 </TableRow>
               </TableFooter>
             </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle className="text-base">Interfiling by client</CardTitle>
+            <CardDescription>
+              Boxes that hold recorded files (contents), with how many and the filing dates they cover. Uses the client and box status chosen above.
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            nativeButton={false}
+            render={<a href={`/api/exports/interfiling.csv${new URLSearchParams({ ...(scope ? { clientId: scope } : {}), ...(status === ALL ? {} : { status }) }).toString() ? "?" + new URLSearchParams({ ...(scope ? { clientId: scope } : {}), ...(status === ALL ? {} : { status }) }).toString() : ""}`} download />}
+          >
+            <Download /> CSV (all)
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {interfiling.isLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : (interfiling.data?.items ?? []).length === 0 ? (
+            <p className="text-muted-foreground text-sm">No box holds recorded files yet.</p>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Box</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead className="text-right">Records</TableHead>
+                    <TableHead>Filed</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(interfiling.data?.items ?? []).map((r) => (
+                    <TableRow key={r.boxId}>
+                      <TableCell className="font-medium">{r.clientName}</TableCell>
+                      <TableCell>{r.boxNumber}</TableCell>
+                      <TableCell className="capitalize">{label(r.status)}</TableCell>
+                      <TableCell>{r.location ?? "—"}</TableCell>
+                      <TableCell className="text-right">{r.records}</TableCell>
+                      <TableCell>{r.filedFrom || r.filedTo ? `${r.filedFrom ?? "…"} – ${r.filedTo ?? "…"}` : "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <PaginationFooter page={interPage} pageSize={INTER_PAGE_SIZE} total={interfiling.data?.total ?? 0} onPageChange={setInterPage} />
+            </>
           )}
         </CardContent>
       </Card>

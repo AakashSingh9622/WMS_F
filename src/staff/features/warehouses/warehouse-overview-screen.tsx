@@ -4,14 +4,17 @@ import { MapPin } from "@/components/icons"
 import { PageHeader } from "@/components/page-header"
 import Link from "next/link"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { useCan } from "@/auth/useAuth"
-import { useCreateRack, useWarehouse, useWarehouseLayout } from "@/api/warehouses"
-import type { Rack, WarehouseLayout } from "@/api/types"
+import { useCreateRack, useDeleteWarehouse, useUpdateWarehouse, useWarehouse, useWarehouseLayout, useWarehouses } from "@/api/warehouses"
+import type { Rack, Warehouse, WarehouseLayout } from "@/api/types"
 import { CapacityBar } from "@/components/capacity-bar"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { capacityLevel } from "@/lib/capacity"
 import { formatLength, toCentimetres, type LengthUnit } from "@/domain/dimensions"
+import { aisleTitle } from "@/domain/location"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +27,114 @@ import { ManageLayoutDialog, RackPlacementFields } from "@/staff/features/wareho
 
 function onError(err: unknown) {
   toast.error(err instanceof Error ? err.message : "That didn't work")
+}
+
+/** Docbox "Almacen": name, site and address of the warehouse, or delete it once it has no modules. */
+function EditWarehouseDialog({ warehouse }: { warehouse: Warehouse }) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [askDelete, setAskDelete] = useState(false)
+  const [name, setName] = useState(warehouse.name)
+  const [site, setSite] = useState(warehouse.site ?? "")
+  const [address, setAddress] = useState(warehouse.address ?? "")
+  const { data: warehouses } = useWarehouses()
+  const update = useUpdateWarehouse()
+  const remove = useDeleteWarehouse()
+
+  async function save() {
+    try {
+      await update.mutateAsync({ warehouseId: warehouse.id, name: name.trim(), site: site.trim(), address: address.trim() })
+      toast.success("Warehouse saved")
+      setOpen(false)
+    } catch (err) {
+      onError(err)
+    }
+  }
+
+  async function del() {
+    try {
+      await remove.mutateAsync(warehouse.id)
+      toast.success("Warehouse deleted")
+      router.push("/app/warehouses")
+    } catch (err) {
+      onError(err)
+    }
+  }
+
+  return (
+    <>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (next) {
+          setName(warehouse.name)
+          setSite(warehouse.site ?? "")
+          setAddress(warehouse.address ?? "")
+        }
+      }}
+    >
+      <DialogTrigger render={<Button variant="outline" size="sm" />}>Edit warehouse</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Warehouse {warehouse.code}</DialogTitle>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="wh-edit-name">Name</FieldLabel>
+            <Input id="wh-edit-name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="wh-edit-site">Site (Sede)</FieldLabel>
+            <Input id="wh-edit-site" list="wh-edit-sites" value={site} maxLength={80} onChange={(e) => setSite(e.target.value)} />
+            <datalist id="wh-edit-sites">
+              {[...new Set((warehouses ?? []).map((w) => w.site).filter(Boolean))].map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+            <p className="text-muted-foreground text-xs">
+              Groups warehouses under one head office or site. Leave it empty for none. The place shown on this warehouse&apos;s boxes is updated.
+            </p>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="wh-edit-address">Address (optional)</FieldLabel>
+            <Input id="wh-edit-address" value={address} maxLength={300} onChange={(e) => setAddress(e.target.value)} />
+          </Field>
+        </FieldGroup>
+        <DialogFooter className="sm:justify-between">
+          <div className="space-y-1">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setOpen(false)
+                setAskDelete(true)
+              }}
+              disabled={warehouse.rackCount > 0 || remove.isPending}
+            >
+              Delete warehouse
+            </Button>
+            {warehouse.rackCount > 0 && (
+              <p className="text-muted-foreground text-xs">Delete its {warehouse.rackCount} module{warehouse.rackCount === 1 ? "" : "s"} first (they must be empty).</p>
+            )}
+          </div>
+          <Button onClick={save} disabled={!name.trim() || update.isPending}>
+            {update.isPending ? "Saving…" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+      <ConfirmDialog
+        open={askDelete}
+        onOpenChange={setAskDelete}
+        title="Delete this warehouse?"
+        description={`${warehouse.code} — ${warehouse.name} will be deleted, with its floors and aisles. It has no modules left. This can't be undone.`}
+        confirmLabel="Delete warehouse"
+        destructive
+        onConfirm={del}
+      />
+    </>
+  )
 }
 
 function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: WarehouseLayout }) {
@@ -53,7 +164,7 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
         zoneId: placement.zoneId || undefined,
         aisleId: placement.aisleId || undefined,
       })
-      toast.success("Rack added")
+      toast.success("Module added")
       setOpen(false)
       setCode("")
       setLabel("")
@@ -65,10 +176,10 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm" />}>Add rack</DialogTrigger>
+      <DialogTrigger render={<Button size="sm" />}>Add module</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add rack</DialogTitle>
+          <DialogTitle>Add module (rack)</DialogTitle>
         </DialogHeader>
         <FieldGroup>
           <Field>
@@ -80,7 +191,7 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
           </Field>
           <Field>
             <FieldLabel htmlFor="rack-label">Label</FieldLabel>
-            <Input id="rack-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Rack A-01" />
+            <Input id="rack-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Module A-01" />
           </Field>
           <RackPlacementFields
             layout={layout}
@@ -141,7 +252,7 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
         </FieldGroup>
         <DialogFooter>
           <Button onClick={submit} disabled={!code || !label || lengthCm <= 0 || createRack.isPending}>
-            {createRack.isPending ? "Adding…" : "Add rack"}
+            {createRack.isPending ? "Adding…" : "Add module"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -159,7 +270,12 @@ function RackCards({ racks, warehouseId }: { racks: Rack[]; warehouseId: string 
             <Card className="hover:border-primary/50 transition-colors">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center justify-between text-sm">
-                  {rack.label}
+                  <span className="min-w-0">
+                    {rack.label}
+                    <span className="text-muted-foreground block font-mono text-xs font-normal">
+                      {rack.code} · {rack.rows} shelves × {rack.columns} positions
+                    </span>
+                  </span>
                   {level === "critical" && (
                     <Badge variant="outline" className="border-status-hold text-status-hold">
                       Full
@@ -189,24 +305,28 @@ interface Group {
 }
 
 /**
- * Racks grouped zone → aisle (aisles without a zone after the zones, racks with neither last). With no zones or aisles
+ * Racks (modules) grouped floor (zone) → aisle (aisles without a zone after the zones, racks with neither last). With no zones or aisles
  * at all it is just one list, as before.
  */
 function groupRacks(layout: WarehouseLayout): Group[] {
   const groups: Group[] = []
-  const aisleGroup = (a: WarehouseLayout["aisles"][number], depth: 0 | 1): Group => ({
-    key: a.id,
-    title: `Aisle ${a.code}`,
-    name: a.name,
-    used: a.usedCapacity,
-    total: a.totalCapacity,
-    racks: layout.racks.filter((r) => r.aisleId === a.id),
-    depth,
-  })
+  const aisleGroup = (a: WarehouseLayout["aisles"][number], depth: 0 | 1): Group => {
+    const label = aisleTitle(a, layout.zones.find((z) => z.id === a.zoneId))
+    return {
+      key: a.id,
+      title: label.title,
+      // "Aisle 01" with its full code (floor-aisle) beside it, so "00-01" is explained
+      name: label.code ? `code ${label.code}` : a.name,
+      used: a.usedCapacity,
+      total: a.totalCapacity,
+      racks: layout.racks.filter((r) => r.aisleId === a.id),
+      depth,
+    }
+  }
   for (const z of layout.zones) {
     groups.push({
       key: z.id,
-      title: `Zone ${z.code}`,
+      title: `Floor ${z.code}`,
       name: z.name,
       used: z.usedCapacity,
       total: z.totalCapacity,
@@ -217,7 +337,7 @@ function groupRacks(layout: WarehouseLayout): Group[] {
   }
   for (const a of layout.aisles.filter((x) => !x.zoneId)) groups.push(aisleGroup(a, 0))
   const loose = layout.racks.filter((r) => !r.zoneId && !r.aisleId)
-  if (loose.length) groups.push({ key: "none", title: "No zone or aisle", racks: loose, depth: 0 })
+  if (loose.length) groups.push({ key: "none", title: "No floor or aisle", racks: loose, depth: 0 })
   return groups
 }
 
@@ -238,10 +358,19 @@ export function WarehouseOverviewScreen({ warehouseId }: { warehouseId: string }
         <PageHeader
           icon={MapPin}
           title={`${warehouse?.code} — ${warehouse?.name}`}
-          description={warehouse?.address}
+          description={[warehouse?.site && `Site: ${warehouse.site}`, warehouse && `${warehouse.boxCount} box${warehouse.boxCount === 1 ? "" : "es"}`, warehouse?.address].filter(Boolean).join(" · ") || undefined}
           actions={
             canManageLayout ? (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
+                {warehouse && (
+                  <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/app/boxes?wh=${encodeURIComponent(warehouse.code)}`} />}>
+                    View boxes
+                  </Button>
+                )}
+                {warehouse && <EditWarehouseDialog warehouse={warehouse} />}
+                <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/app/settings/layout-import?warehouse=${warehouseId}`} />}>
+                  Import layout
+                </Button>
                 <ManageLayoutDialog warehouseId={warehouseId} layout={layout} />
                 <AddRackDialog warehouseId={warehouseId} layout={layout} />
               </div>
@@ -256,7 +385,7 @@ export function WarehouseOverviewScreen({ warehouseId }: { warehouseId: string }
             <CapacityBar used={warehouse.usedCapacity} total={warehouse.totalCapacity} />
             {criticalRacks.length > 0 && (
               <p className="text-status-hold mt-2 text-sm">
-                {criticalRacks.length} rack{criticalRacks.length === 1 ? "" : "s"} over 90% full.
+                {criticalRacks.length} module{criticalRacks.length === 1 ? "" : "s"} over 90% full.
               </p>
             )}
           </CardContent>
@@ -271,11 +400,11 @@ export function WarehouseOverviewScreen({ warehouseId }: { warehouseId: string }
         </div>
       )}
 
-      {isError && <p className="text-destructive text-sm">Couldn&apos;t load racks. Try refreshing.</p>}
+      {isError && <p className="text-destructive text-sm">Couldn&apos;t load modules. Try refreshing.</p>}
 
       {racks && racks.length === 0 && (
         <p className="text-muted-foreground text-sm">
-          No racks yet. {canManageLayout ? "Use “Add rack” above to create one." : "Ask an admin to add one."}
+          No modules yet. {canManageLayout ? "Use “Add module” above to create one." : "Ask an admin to add one."}
         </p>
       )}
 
@@ -287,7 +416,7 @@ export function WarehouseOverviewScreen({ warehouseId }: { warehouseId: string }
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h2 className={g.depth === 1 ? "text-sm font-semibold" : "text-base font-semibold"}>
                 {g.title}
-                {g.name && <span className="text-muted-foreground ml-2 font-normal">{g.name}</span>}
+                {g.name && !g.title.toLowerCase().endsWith(g.name.toLowerCase()) && <span className="text-muted-foreground ml-2 font-normal">{g.name}</span>}
               </h2>
               {g.total ? (
                 <div className="w-56">
@@ -298,7 +427,7 @@ export function WarehouseOverviewScreen({ warehouseId }: { warehouseId: string }
             {g.racks.length > 0 ? (
               <RackCards racks={g.racks} warehouseId={warehouseId} />
             ) : g.title.startsWith("Aisle") ? (
-              <p className="text-muted-foreground text-xs">No racks in this aisle yet.</p>
+              <p className="text-muted-foreground text-xs">No modules in this aisle yet.</p>
             ) : null}
           </section>
         ))}

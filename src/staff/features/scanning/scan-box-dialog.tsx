@@ -4,6 +4,8 @@ import Link from "next/link"
 import { useState } from "react"
 
 import { useBoxLookup } from "@/api/boxes"
+import { useCustomFields } from "@/api/customFields"
+import { useCan } from "@/auth/useAuth"
 import { useBoxSizeName } from "@/api/settings"
 import type { Box } from "@/api/types"
 import { CameraScanner } from "@/components/camera-scanner"
@@ -28,8 +30,23 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /** What a scan shows: who the box belongs to, what's in it, where it is and what's happening to it. */
-function BoxQuickView({ box, onOpen }: { box: Box; onOpen: () => void }) {
+function BoxQuickView({ box, scanned, onOpen }: { box: Box; scanned: string; onOpen: () => void }) {
   const sizeName = useBoxSizeName()
+  const canOperate = useCan("boxes.operate")
+  const { data: fieldDefs } = useCustomFields(box.clientId, { includeInactive: true })
+  // The client's own fields this box has a value for (what identifies it: FOLDER, SUBFOLDER, CONTENTS …).
+  const customRows = (fieldDefs ?? []).flatMap((f) => {
+    const raw = box.customFields?.[f.code]
+    if (raw === undefined || raw === "") return []
+    return [{ code: f.code, name: f.name, value: f.fieldType === "date" ? formatDate(String(raw)) : String(raw) }]
+  })
+  // After a Re-label the box has a new barcode and the old label no longer scans for operations: say so.
+  const oldLabel = box.barcode !== box.boxNumber && box.barcode.toLowerCase() !== scanned.trim().toLowerCase()
+  // Boxes that aren't on a shelf (just registered, received, or missing) need a way to put them on one.
+  const moveLabel = box.status === "missing" ? "Found — place in a slot" : box.locationPath ? "Move" : "Put on a shelf"
+  const showMove =
+    box.status !== "destroyed" &&
+    (!!box.locationPath || (canOperate && ["unallocated", "received", "missing"].includes(box.status)))
   const warning =
     (box.onHold && `On hold${box.holdReason ? ` — ${box.holdReason}` : ""}`) ||
     (box.status === "quarantined" && `Quarantined${box.quarantineReason ? ` — ${box.quarantineReason}` : ""}`) ||
@@ -44,6 +61,12 @@ function BoxQuickView({ box, onOpen }: { box: Box; onOpen: () => void }) {
         <BoxStatusBadge status={box.status} />
       </div>
       {warning && <p className="bg-status-hold/10 text-status-hold rounded-md px-3 py-2 text-sm">{warning}</p>}
+      {oldLabel && (
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          This box has a newer label: its barcode is now <span className="font-mono font-semibold">{box.barcode}</span>. The
+          label you scanned is the old one — replace it (Open box → Re-label).
+        </p>
+      )}
       <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <Row label="Location">
@@ -53,10 +76,25 @@ function BoxQuickView({ box, onOpen }: { box: Box; onOpen: () => void }) {
         <div className="sm:col-span-2">
           <Row label="Description">{box.description}</Row>
         </div>
+        {customRows.map((f) => (
+          <Row key={f.code} label={f.name}>
+            {f.value}
+          </Row>
+        ))}
         <Row label="Size">{`${sizeName(box.size)}${box.lengthCm ? ` (${box.lengthCm} cm)` : ""}`}</Row>
         <Row label="Filed">{formatDateRange(box.filingDateFrom, box.filingDateTo)}</Row>
         <Row label="Department / reference">{[box.department, box.reference].filter(Boolean).join(" · ")}</Row>
         <Row label="Destroy after">{box.destroyAfter ? formatDate(box.destroyAfter) : ""}</Row>
+        <Row label="Pallet number">{box.palletNo}</Row>
+        {(box.containerNo || box.containerType) && (
+          <Row label="Container">{[box.containerNo, box.containerType].filter(Boolean).join(" · ")}</Row>
+        )}
+        <Row label="Entry date">{formatDate(box.entryDate ?? box.createdAt)}</Row>
+        {box.comments && (
+          <div className="sm:col-span-2">
+            <Row label="Comments">{box.comments}</Row>
+          </div>
+        )}
         {box.openOrder && (
           <div className="sm:col-span-2">
             <Row label="On an order">
@@ -80,13 +118,13 @@ function BoxQuickView({ box, onOpen }: { box: Box; onOpen: () => void }) {
         >
           History
         </Button>
-        {box.locationPath && box.status !== "destroyed" && (
+        {showMove && (
           <Button
             variant="outline"
             nativeButton={false}
             render={<Link href={`/app/boxes/${box.id}/move`} onClick={onOpen} />}
           >
-            Move
+            {moveLabel}
           </Button>
         )}
       </div>
@@ -153,7 +191,7 @@ export function ScanBoxButton() {
                 {error instanceof Error ? error.message : `No box has the barcode ${code}`}
               </p>
             )}
-            {code && !isFetching && box && <BoxQuickView box={box} onOpen={() => setOpen(false)} />}
+            {code && !isFetching && box && <BoxQuickView box={box} scanned={code} onOpen={() => setOpen(false)} />}
           </div>
         </DialogContent>
       </Dialog>

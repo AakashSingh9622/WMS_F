@@ -4,6 +4,8 @@ import { z } from "zod"
 import { apiClient, parse } from "@/api/client"
 
 export interface LayoutRow {
+  /** Docbox "Sede": optional. */
+  site?: string
   warehouse: string
   floor: string
   aisle: string
@@ -18,6 +20,8 @@ const resultSchema = z.object({
   aisles: z.number(),
   racks: z.number(),
   shelves: z.number(),
+  /** The warehouses the modules go into (or went into). */
+  targets: z.array(z.object({ name: z.string(), code: z.string().optional(), id: z.string().optional(), isNew: z.boolean() })),
 })
 export type LayoutImportResult = z.infer<typeof resultSchema>
 

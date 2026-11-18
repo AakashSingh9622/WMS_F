@@ -7,6 +7,8 @@ import { toast } from "sonner"
 
 import { useAuth } from "@/auth/useAuth"
 import { getOrderActions } from "@/domain/orders"
+import { LOAN_TYPES, loanTypeLabel, loanTypeOf, type LoanType } from "@/domain/loan-type"
+import { REQUEST_CHANNELS, requestChannelLabel, type RequestChannel } from "@/domain/request-channel"
 import {
   useApproveDestruction,
   useApproveOrder,
@@ -16,6 +18,8 @@ import {
   useCompleteOrder,
   useDigitizeOrder,
   useDispatchOrder,
+  useEditOrderDetails,
+  type EditOrderDetailsInput,
   useHoldOrder,
   useOrderLines,
   useRecordDelivery,
@@ -542,6 +546,8 @@ export function OrderActions({ order }: { order: Order }) {
         </Button>
       )}
 
+      {actions.canEditDetails && <EditRequestDialog order={order} />}
+
       {actions.canReopen && (
         <TextFieldAction
           label="Reopen order"
@@ -561,5 +567,98 @@ export function OrderActions({ order }: { order: Order }) {
         />
       )}
     </div>
+  )
+}
+
+/** Docbox "Modificar Peticiones": fix the loan type, how the client asked, or who asked, after the request was logged. */
+function EditRequestDialog({ order }: { order: Order }) {
+  const edit = useEditOrderDetails()
+  const isLoan = order.type === "dispatch" || order.type === "digitize"
+  const [open, setOpen] = useState(false)
+  const [loanType, setLoanType] = useState<LoanType>(loanTypeOf(order) ?? "normal")
+  const [channel, setChannel] = useState<string>(order.requestChannel ?? "none")
+  const [email, setEmail] = useState(order.contactEmail ?? "")
+  const [remarks, setRemarks] = useState("")
+
+  const submit = () => {
+    const input: EditOrderDetailsInput = {}
+    if (isLoan && loanType !== loanTypeOf(order)) input.loanType = loanType
+    if (channel !== (order.requestChannel ?? "none")) input.requestChannel = channel === "none" ? "" : (channel as RequestChannel)
+    if (email.trim() && email.trim().toLowerCase() !== (order.contactEmail ?? "")) input.contactEmail = email.trim()
+    if (remarks.trim()) input.remarks = remarks.trim()
+    if (Object.keys(input).length === 0) {
+      toast.info("Nothing was changed.")
+      return
+    }
+    edit.mutate(
+      { orderId: order.id, input },
+      {
+        onSuccess: () => {
+          toast.success("Request updated.")
+          setOpen(false)
+          setRemarks("")
+        },
+        onError,
+      },
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant="outline" />}>Edit request</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit request {order.orderNumber}</DialogTitle>
+        </DialogHeader>
+        <FieldGroup>
+          {isLoan && (
+            <Field>
+              <FieldLabel htmlFor="edit-loan-type">Loan type</FieldLabel>
+              <Select value={loanType} onValueChange={(v) => setLoanType((v as LoanType) ?? "normal")}>
+                <SelectTrigger id="edit-loan-type">
+                  <SelectValue getLabel={(v) => loanTypeLabel(v) ?? v} />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOAN_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+          <Field>
+            <FieldLabel htmlFor="edit-channel">How the client asked</FieldLabel>
+            <Select value={channel} onValueChange={(v) => setChannel(v ?? "none")}>
+              <SelectTrigger id="edit-channel">
+                <SelectValue getLabel={(v) => (v === "none" ? "Not recorded" : (requestChannelLabel(v) ?? v))} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Not recorded</SelectItem>
+                {REQUEST_CHANNELS.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="edit-email">Requested by (contact email)</FieldLabel>
+            <Input id="edit-email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="edit-remarks">Remark (optional, added to the order notes)</FieldLabel>
+            <Textarea id="edit-remarks" value={remarks} maxLength={500} onChange={(e) => setRemarks(e.target.value)} />
+          </Field>
+        </FieldGroup>
+        <DialogFooter>
+          <Button disabled={edit.isPending} onClick={submit}>
+            {edit.isPending ? "Saving…" : "Save changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -36,6 +36,8 @@ interface CreateWarehouseInput {
   code: string
   name: string
   address?: string
+  /** Docbox "Sede": the site the warehouse belongs to. */
+  site?: string
 }
 
 export function useCreateWarehouse() {
@@ -45,6 +47,64 @@ export function useCreateWarehouse() {
     mutationFn: async (input: CreateWarehouseInput): Promise<Warehouse> =>
       parse(warehouseSchema, await apiClient.post("/warehouses", input)),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.warehouses.all })
+    },
+  })
+}
+
+/** Docbox "Almacen": change the name, address and / or site of a warehouse ("" clears an address or site). The code stays. */
+export function useUpdateWarehouse() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ warehouseId, ...changes }: { warehouseId: string; name?: string; address?: string; site?: string }): Promise<Warehouse> =>
+      parse(warehouseSchema, await apiClient.patch(`/warehouses/${warehouseId}`, changes)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.warehouses.all })
+      queryClient.invalidateQueries({ queryKey: ["boxes"] })
+    },
+  })
+}
+
+/** A warehouse with no racks can be deleted. */
+export function useDeleteWarehouse() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (warehouseId: string) => apiClient.delete(`/warehouses/${warehouseId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.warehouses.all }),
+  })
+}
+
+/** Docbox "Fila / Balda": add a shelf on top of a rack. */
+export function useAddShelf() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (rackId: string) => apiClient.post(`/racks/${rackId}/shelves`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["racks"] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.warehouses.all })
+    },
+  })
+}
+
+/** Remove the last shelf of a rack (only while it is empty). */
+export function useRemoveLastShelf() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (rackId: string) => apiClient.delete(`/racks/${rackId}/shelves/last`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["racks"] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.warehouses.all })
+    },
+  })
+}
+
+/** Delete a whole rack (module) while no box is on it. */
+export function useDeleteRack() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (rackId: string) => apiClient.delete(`/racks/${rackId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["racks"] })
       queryClient.invalidateQueries({ queryKey: queryKeys.warehouses.all })
     },
   })

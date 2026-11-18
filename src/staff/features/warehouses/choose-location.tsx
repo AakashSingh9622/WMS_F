@@ -116,9 +116,9 @@ export function ChooseLocation({
     <div className="space-y-6">
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold">Find a rack, shelf or position</h2>
+          <h2 className="text-sm font-semibold">Find a module, shelf or position</h2>
           <p className="text-muted-foreground text-xs">
-            Type the rack&apos;s name or code, then the shelf (and position) number — e.g. “Rack A-01 3”, B04-3 or
+            Type the module&apos;s name or code, then the shelf (and position) number — e.g. “A-01 3”, B04-3 or
             B04-3-2.
           </p>
         </div>
@@ -131,7 +131,7 @@ export function ChooseLocation({
         >
           <div className="relative flex-1">
             <Input
-              aria-label="Rack name or code, shelf, position"
+              aria-label="Module name or code, shelf, position"
               value={code}
               onChange={(e) => {
                 setCode(e.target.value)
@@ -140,7 +140,7 @@ export function ChooseLocation({
               onFocus={() => setShowMatches(true)}
               onBlur={() => setTimeout(() => setShowMatches(false), 150)}
               onKeyDown={(e) => e.key === "Escape" && setShowMatches(false)}
-              placeholder="Rack name or code, e.g. Rack A-01 3"
+              placeholder="Module name or code, e.g. A-01 3"
               autoComplete="off"
               role="combobox"
               aria-expanded={showMatches && !!matches?.length}
@@ -165,7 +165,7 @@ export function ChooseLocation({
                         <span className="text-muted-foreground ml-2 font-mono text-xs">{m.rackCode}</span>
                       </span>
                       <span className="text-muted-foreground shrink-0 text-xs">
-                        {[m.warehouseCode, m.zone && `Zone ${m.zone}`, m.aisle && `Aisle ${m.aisle}`]
+                        {[m.warehouseCode, m.zone && `Floor ${m.zone}`, m.aisle && `Aisle ${m.aisle}`]
                           .filter(Boolean)
                           .join(" › ")}
                       </span>
@@ -235,10 +235,10 @@ export function ChooseLocation({
                 setRackId("")
               }}
             >
-              <SelectTrigger className="w-44" aria-label="Zone">
+              <SelectTrigger className="w-44" aria-label="Floor">
                 <SelectValue
                   getLabel={(id) =>
-                    id === ALL ? "All zones" : id === NONE ? "No zone" : `Zone ${zones.find((z) => z.id === id)?.code}`
+                    id === ALL ? "All floors" : id === NONE ? "No floor" : `Floor ${zones.find((z) => z.id === id)?.code}`
                   }
                 />
               </SelectTrigger>
@@ -246,7 +246,7 @@ export function ChooseLocation({
                 <SelectItem value={ALL}>All zones</SelectItem>
                 {zones.map((z) => (
                   <SelectItem key={z.id} value={z.id}>
-                    Zone {z.code}
+                    Floor {z.code}
                     {z.name ? ` — ${z.name}` : ""}
                   </SelectItem>
                 ))}
@@ -289,9 +289,9 @@ export function ChooseLocation({
 
           {warehouseId && (
             <Select value={rackId} onValueChange={(v) => setRackId(v ?? "")}>
-              <SelectTrigger className="w-56" aria-label="Rack">
+              <SelectTrigger className="w-56" aria-label="Module">
                 <SelectValue
-                  placeholder={racks.length ? "Rack" : "No racks here"}
+                  placeholder={racks.length ? "Module" : "No modules here"}
                   getLabel={(id) => layout?.racks.find((r) => r.id === id)?.label ?? id}
                 />
               </SelectTrigger>
@@ -375,7 +375,7 @@ function LookupResult({
               variant="outline"
               onClick={() => onRetry(result.code, { rackId: c.rackId })}
             >
-              {[c.warehouseCode, c.zone && `Zone ${c.zone}`, c.aisle && `Aisle ${c.aisle}`].filter(Boolean).join(" › ")}{" "}
+              {[c.warehouseCode, c.zone && `Floor ${c.zone}`, c.aisle && `Aisle ${c.aisle}`].filter(Boolean).join(" › ")}{" "}
               › {c.rackLabel} <span className="text-muted-foreground font-mono text-xs">{c.rackCode}</span>
             </Button>
           ))}
@@ -387,9 +387,9 @@ function LookupResult({
   const found: Found = result
   const segments = [
     found.warehouse.code,
-    ...(found.zone ? [`Zone ${found.zone.code}`] : []),
+    ...(found.zone ? [`Floor ${found.zone.code}`] : []),
     ...(found.aisle ? [`Aisle ${found.aisle.code}`] : []),
-    found.rack.label === found.rack.code ? `Rack ${found.rack.code}` : `${found.rack.label} (${found.rack.code})`,
+    found.rack.label === found.rack.code ? `Module ${found.rack.code}` : `${found.rack.label} (${found.rack.code})`,
     ...(found.shelf != null ? [`Shelf ${found.shelf}`] : []),
   ]
   if (found.kind === "rack") {

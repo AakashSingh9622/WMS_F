@@ -67,7 +67,7 @@ export function MoveBoxScreen({ boxId }: { boxId: string }) {
             <FieldLabel htmlFor="move-reason">Step 1 · Why is this box moving? (required)</FieldLabel>
             <Input
               id="move-reason"
-              placeholder="e.g. Consolidating this client's boxes in one rack"
+              placeholder="e.g. Consolidating this client's boxes in one module"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />

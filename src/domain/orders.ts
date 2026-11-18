@@ -51,6 +51,8 @@ export interface OrderActions {
   canResume: boolean
   /** Correct a mistake: bring a cancelled / rejected order back to "requested". */
   canReopen: boolean
+  /** Fix the loan type / channel / requester of a request (Docbox "Modificar Peticiones"). */
+  canEditDetails: boolean
   /** Second signature on a destruction (records.approve; the backend refuses the person who prepared it). */
   canApproveDestruction: boolean
   /** Proof of delivery for a dispatched order. */
@@ -101,6 +103,7 @@ export function getOrderActions(order: Order, roles: readonly Role[]): OrderActi
     canHold: approve && next("on_hold"),
     canResume: approve && s === "on_hold",
     canReopen: approve && (s === "cancelled" || s === "rejected"),
+    canEditDetails: approve,
     canApproveDestruction:
       can(roles, "records.approve") &&
       order.type === "destruction" &&

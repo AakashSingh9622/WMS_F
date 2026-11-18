@@ -2,11 +2,13 @@
 
 import Link from "next/link"
 
+import { useMarkLabelsPrinted } from "@/api/boxes"
 import type { Box, LocationPath } from "@/api/types"
 import { StoredLocation } from "@/components/location-path"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { locationText } from "@/domain/location"
+import { formatDate, formatDateRange } from "@/lib/formatting"
 
 const HERO_GRADIENT = "linear-gradient(115deg, #7d0013 0%, #b93c2e 55%, #e4572e 125%)" // same as the dashboard hero
 
@@ -101,15 +103,21 @@ export function RegisteredHero({
   boxes,
   placed,
   orderId,
+  printed,
+  onPrinted,
   onRegisterMore,
   onFileRest,
 }: {
   boxes: Box[]
   placed: Record<string, LocationPath>
   orderId?: string
+  /** Whether the labels of this batch were printed in the wizard. */
+  printed: boolean
+  onPrinted: () => void
   onRegisterMore: () => void
   onFileRest: () => void
 }) {
+  const markPrinted = useMarkLabelsPrinted()
   const filed = boxes.filter((b) => placed[b.id])
   const waiting = boxes.length - filed.length
   const first = boxes[0]
@@ -211,6 +219,36 @@ export function RegisteredHero({
         </div>
       </section>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">What you registered</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            {(
+              [
+                ["Description", first?.description],
+                ["Department", first?.department],
+                ["Reference", first?.reference],
+                ["Pallet number", first?.palletNo],
+                ["Entry date", first ? formatDate(first.entryDate ?? first.createdAt) : undefined],
+                ["Filed", first ? formatDateRange(first.filingDateFrom, first.filingDateTo) : undefined],
+                ["Destroy after", first?.destroyAfter ? formatDate(first.destroyAfter) : undefined],
+                ["Retention category", first?.retentionCategory],
+                ["Comments", first?.comments],
+              ] as [string, string | undefined][]
+            )
+              .filter(([, value]) => value)
+              .map(([label, value]) => (
+                <div key={label} className={label === "Description" || label === "Comments" ? "sm:col-span-2 lg:col-span-3" : undefined}>
+                  <dt className="text-muted-foreground text-xs">{label}</dt>
+                  <dd className="font-medium">{value}</dd>
+                </div>
+              ))}
+          </dl>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -246,15 +284,19 @@ export function RegisteredHero({
             <CardTitle className="text-base">Labels</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <p className="text-muted-foreground">Lost or smudged a label? Print the batch again.</p>
+            <p className={printed ? "text-muted-foreground" : "text-amber-700"}>
+              {printed ? "Lost or smudged a label? Print the batch again." : "The labels of this batch have not been printed yet."}
+            </p>
             <Button
               variant="outline"
-              nativeButton={false}
-              render={
-                <Link href={`/print/labels?boxIds=${boxes.map((b) => b.id).join(",")}&autoprint=1`} target="_blank" />
-              }
+              disabled={markPrinted.isPending}
+              onClick={async () => {
+                window.open(`/print/labels?boxIds=${boxes.map((b) => b.id).join(",")}&autoprint=1`, "_blank")
+                await markPrinted.mutateAsync(boxes.map((b) => b.id))
+                onPrinted()
+              }}
             >
-              Print labels again
+              {printed ? "Print labels again" : `Print ${boxes.length} label${boxes.length === 1 ? "" : "s"}`}
             </Button>
           </CardContent>
         </Card>

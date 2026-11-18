@@ -38,7 +38,10 @@ export function formatDateTime(value?: string | null): string {
 }
 
 export function formatDateRange(from?: string | null, to?: string | null): string {
-  return `${formatDate(from)}${to ? ` – ${formatDate(to)}` : ""}`
+  const start = formatDate(from)
+  const end = to ? formatDate(to) : ""
+  // Same day (or no end date): one date, not "17/11/2026 – 17/11/2026".
+  return end && end !== start ? `${start} – ${end}` : start
 }
 
 /** Today as "yyyy-mm-dd" in the user's own time zone — the value format of <input type="date">. */

@@ -13,24 +13,28 @@ export const customFieldSchema = z.object({
   required: z.boolean(),
   position: z.number(),
   active: z.boolean(),
+  expedienteId: z.string().optional(), // set: only for that expediente; empty: for all of the client's expedientes
 })
 export type CustomField = z.infer<typeof customFieldSchema>
 export type CustomFieldType = CustomField["fieldType"]
 
 export const FIELD_TYPE_LABELS: Record<CustomFieldType, string> = { text: "Text", date: "Date", number: "Number" }
 
-const key = (clientId: string, includeInactive: boolean) => ["custom-fields", clientId, includeInactive] as const
+const key = (clientId: string, includeInactive: boolean, expedienteId = "") => ["custom-fields", clientId, includeInactive, expedienteId] as const
 
 /** The client's fields in order. Settings asks for retired ones too; registering / importing only needs the active ones. */
-export function useCustomFields(clientId: string, options: { includeInactive?: boolean } = {}) {
+export function useCustomFields(clientId: string, options: { includeInactive?: boolean; expedienteId?: string } = {}) {
   const includeInactive = options.includeInactive ?? false
+  const expedienteId = options.expedienteId ?? ""
   return useQuery({
-    queryKey: key(clientId, includeInactive),
+    queryKey: key(clientId, includeInactive, expedienteId),
     enabled: !!clientId,
     queryFn: async (): Promise<CustomField[]> =>
       parse(
         z.array(customFieldSchema),
-        await apiClient.get(`/custom-fields?clientId=${encodeURIComponent(clientId)}${includeInactive ? "&includeInactive=true" : ""}`)
+        await apiClient.get(
+          `/custom-fields?clientId=${encodeURIComponent(clientId)}${includeInactive ? "&includeInactive=true" : ""}${expedienteId ? `&expedienteId=${encodeURIComponent(expedienteId)}` : ""}`
+        )
       ),
   })
 }
@@ -38,7 +42,7 @@ export function useCustomFields(clientId: string, options: { includeInactive?: b
 export function useCreateCustomField() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { clientId: string; name: string; fieldType: CustomFieldType; required: boolean }) =>
+    mutationFn: async (input: { clientId: string; name: string; fieldType: CustomFieldType; required: boolean; expedienteId?: string }) =>
       parse(customFieldSchema, await apiClient.post("/custom-fields", input)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["custom-fields"] }),
   })

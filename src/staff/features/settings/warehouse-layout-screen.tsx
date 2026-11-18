@@ -17,7 +17,7 @@ export function WarehouseLayoutScreen() {
       <PageHeader
         icon={Warehouse}
         title="Warehouse layout"
-        description="Block/unblock a slot or change its capacity from the rack's slot grid."
+        description="Block/unblock a slot or change its capacity from the module's slot grid."
       />
 
       {isLoading && <Skeleton className="h-40 w-full max-w-xl" />}
@@ -37,7 +37,7 @@ export function WarehouseLayoutScreen() {
               href={`/app/warehouses/${warehouse.id}`}
               className="text-primary text-sm underline-offset-4 hover:underline"
             >
-              View racks →
+              View modules →
             </Link>
           </CardContent>
         </Card>

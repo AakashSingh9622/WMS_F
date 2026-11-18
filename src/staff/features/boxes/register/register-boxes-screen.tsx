@@ -64,8 +64,9 @@ export function RegisterBoxesScreen() {
     if (typeof sessionStorage === "undefined") return
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY)
+      // A draft saved by an older version may lack newer fields (pallet, comments, entry date): fill them from the defaults.
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time load from a browser-only store on mount
-      if (raw) setDraft(JSON.parse(raw))
+      if (raw) setDraft({ ...emptyDraft(), ...JSON.parse(raw) })
       const saved = sessionStorage.getItem(SESSION_KEY)
       if (saved) setSession({ ...emptySession(), ...JSON.parse(saved) })
     } catch {
@@ -175,7 +176,9 @@ export function RegisterBoxesScreen() {
           filedIds={new Set(Object.keys(session.placed))}
           onStartOver={startOver}
           onCreated={(boxes) => {
-            updateSession(() => ({ ...emptySession(), boxes }))
+            // Boxes registered with a location are already on their shelf.
+            const placed = Object.fromEntries(boxes.filter((b) => b.locationPath).map((b) => [b.id, b.locationPath as LocationPath]))
+            updateSession(() => ({ ...emptySession(), boxes, placed }))
             goToStep("labels")
           }}
           onSaved={(boxes, relabel) => {
@@ -214,6 +217,8 @@ export function RegisterBoxesScreen() {
           boxes={session.boxes}
           placed={session.placed}
           orderId={orderId}
+          printed={session.printed}
+          onPrinted={() => updateSession((s) => ({ ...s, printed: true }))}
           onRegisterMore={startOver}
           onFileRest={() => goToStep("allocate")}
         />

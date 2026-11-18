@@ -11,6 +11,9 @@ const loansSchema = z.object({
       physicalUrgent: z.number(),
       physicalNormal: z.number(),
       digitalUrgent: z.number(),
+      physicalSuperior: z.number(),
+      digitalSuperior: z.number(),
+      fax: z.number(),
       digitalNormal: z.number(),
       orders: z.number(),
       boxes: z.number(),
@@ -27,6 +30,24 @@ const archiveSchema = z.object({
 })
 export type ArchiveReport = z.infer<typeof archiveSchema>
 
+const interfilingSchema = z.object({
+  items: z.array(
+    z.object({
+      boxId: z.string(),
+      boxNumber: z.string(),
+      clientId: z.string(),
+      clientName: z.string(),
+      status: z.string(),
+      location: z.string().optional(),
+      records: z.number(),
+      filedFrom: z.string().optional(),
+      filedTo: z.string().optional(),
+    })
+  ),
+  total: z.number(),
+})
+export type InterfilingReport = z.infer<typeof interfilingSchema>
+
 function query(params: Record<string, string | undefined>) {
   const sp = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) if (v) sp.set(k, v)
@@ -39,6 +60,18 @@ export function useLoansReport(params: { clientId?: string; from?: string; to?: 
   return useQuery({
     queryKey: ["reports", "loans", params],
     queryFn: async (): Promise<LoansReport> => parse(loansSchema, await apiClient.get(`/reports/loans${query(params)}`)),
+  })
+}
+
+/** Boxes that hold recorded files, with how many (Docbox "Intercalado por cliente"). Paged on the server. */
+export function useInterfilingReport(params: { clientId?: string; status?: string; page?: number; pageSize?: number }) {
+  return useQuery({
+    queryKey: ["reports", "interfiling", params],
+    queryFn: async (): Promise<InterfilingReport> =>
+      parse(
+        interfilingSchema,
+        await apiClient.get(`/reports/interfiling${query({ ...params, page: params.page ? String(params.page) : undefined, pageSize: params.pageSize ? String(params.pageSize) : undefined })}`),
+      ),
   })
 }
 

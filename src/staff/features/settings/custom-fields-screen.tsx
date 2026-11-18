@@ -11,6 +11,8 @@ import {
   type CustomField,
   type CustomFieldType,
 } from "@/api/customFields"
+import { useCreateExpediente, useDeleteExpediente, useExpedientes, useUpdateExpediente, type Expediente } from "@/api/expedientes"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,7 +25,129 @@ import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 
 const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "That didn't work")
 
-function FieldRow({ field }: { field: CustomField }) {
+/** One expediente of the client: its description can change, and it can go while no box is in it. */
+function ExpedienteRow({ expediente }: { expediente: Expediente }) {
+  const update = useUpdateExpediente()
+  const remove = useDeleteExpediente()
+  const [description, setDescription] = useState(expediente.description)
+  const [askDelete, setAskDelete] = useState(false)
+  const save = () => {
+    const next = description.trim()
+    if (!next || next === expediente.description) return setDescription(expediente.description)
+    update.mutate({ id: expediente.id, description: next }, { onError: (e) => (setDescription(expediente.description), onError(e)) })
+  }
+  return (
+    <TableRow>
+      <TableCell className="w-40 font-mono text-sm">{expediente.code}</TableCell>
+      <TableCell>
+        <Input
+          aria-label={`Description of expediente ${expediente.code}`}
+          value={description}
+          maxLength={200}
+          onChange={(e) => setDescription(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        />
+      </TableCell>
+      <TableCell className="text-right">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={remove.isPending}
+          onClick={() => setAskDelete(true)}
+        >
+          Delete
+        </Button>
+        <ConfirmDialog
+          open={askDelete}
+          onOpenChange={setAskDelete}
+          title={`Delete expediente ${expediente.code}?`}
+          description="Its own fields go with it. This only works while no box is in it."
+          confirmLabel="Delete expediente"
+          destructive
+          onConfirm={async () => {
+            try {
+              await remove.mutateAsync(expediente.id)
+              toast.success("Expediente deleted")
+            } catch (err) {
+              onError(err)
+            }
+          }}
+        />
+      </TableCell>
+    </TableRow>
+  )
+}
+
+/** Docbox "Expedientes - Clientes": the client's files (PLANOS, …). Optional — a client without any works as before. */
+function ExpedientesCard({ clientId }: { clientId: string }) {
+  const list = useExpedientes(clientId)
+  const create = useCreateExpediente()
+  const [code, setCode] = useState("")
+  const [description, setDescription] = useState("")
+  const add = () => {
+    if (!code.trim() || !description.trim()) return
+    create.mutate(
+      { clientId, code: code.trim(), description: description.trim() },
+      {
+        onSuccess: () => {
+          setCode("")
+          setDescription("")
+          toast.success("Expediente added")
+        },
+        onError,
+      }
+    )
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Expedientes of this client</CardTitle>
+        <CardDescription>
+          A client&apos;s files, like PLANOS. Once a client has one, every box and import names its expediente, and a field below can belong
+          to one expediente. Leave this empty for a client with a single set of fields.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {list.isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : list.data && list.data.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Code</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {list.data.map((e) => (
+                <ExpedienteRow key={`${e.id}:${e.description}`} expediente={e} />
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <p className="text-muted-foreground text-sm">No expedientes — this client works with one set of fields.</p>
+        )}
+        <div className="grid items-end gap-4 sm:grid-cols-[10rem_1fr_auto]">
+          <Field>
+            <FieldLabel htmlFor="ex-code">Code</FieldLabel>
+            <Input id="ex-code" value={code} maxLength={30} placeholder="PLANOS" onChange={(e) => setCode(e.target.value.toUpperCase().replace(/\s/g, ""))} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="ex-desc">Description</FieldLabel>
+            <Input id="ex-desc" value={description} maxLength={200} placeholder="Client documentation" onChange={(e) => setDescription(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+          </Field>
+          <Button onClick={add} disabled={!code.trim() || !description.trim() || create.isPending}>
+            Add expediente
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function FieldRow({ field, expedientes }: { field: CustomField; expedientes: Expediente[] }) {
   const update = useUpdateCustomField()
   const [name, setName] = useState(field.name)
   const rename = () => {
@@ -46,6 +170,9 @@ function FieldRow({ field }: { field: CustomField }) {
       </TableCell>
       <TableCell>
         <Badge variant="secondary">{FIELD_TYPE_LABELS[field.fieldType]}</Badge>
+      </TableCell>
+      <TableCell className="text-muted-foreground text-xs">
+        {field.expedienteId ? (expedientes.find((e) => e.id === field.expedienteId)?.code ?? "an expediente") : expedientes.length > 0 ? "All expedientes" : ""}
       </TableCell>
       <TableCell>
         <label className="flex items-center gap-2 text-sm">
@@ -81,7 +208,9 @@ export function CustomFieldsScreen() {
   const { data: clients } = useGetClientsWithDetailsQuery()
   const [clientId, setClientId] = useState("")
   const fields = useCustomFields(clientId, { includeInactive: true })
+  const expedientes = useExpedientes(clientId)
   const create = useCreateCustomField()
+  const [fieldExpediente, setFieldExpediente] = useState("") // "" = a field of every expediente
   const [name, setName] = useState("")
   const [fieldType, setFieldType] = useState<CustomFieldType>("text")
   const [required, setRequired] = useState(false)
@@ -89,7 +218,7 @@ export function CustomFieldsScreen() {
   const add = () => {
     if (!name.trim()) return
     create.mutate(
-      { clientId, name: name.trim(), fieldType, required },
+      { clientId, name: name.trim(), fieldType, required, expedienteId: fieldExpediente || undefined },
       {
         onSuccess: () => {
           setName("")
@@ -131,6 +260,8 @@ export function CustomFieldsScreen() {
 
       {clientId && (
         <>
+          <ExpedientesCard clientId={clientId} />
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Fields of this client</CardTitle>
@@ -149,13 +280,14 @@ export function CustomFieldsScreen() {
                       <TableHead>Code</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Type</TableHead>
+                      <TableHead>For</TableHead>
                       <TableHead />
                       <TableHead />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {fields.data.map((f) => (
-                      <FieldRow key={`${f.id}:${f.name}`} field={f} />
+                      <FieldRow key={`${f.id}:${f.name}`} field={f} expedientes={expedientes.data ?? []} />
                     ))}
                   </TableBody>
                 </Table>
@@ -170,6 +302,24 @@ export function CustomFieldsScreen() {
               <CardTitle className="text-base">Add a field</CardTitle>
             </CardHeader>
             <CardContent className="grid items-end gap-4 sm:grid-cols-[1fr_9rem_auto_auto]">
+              {(expedientes.data?.length ?? 0) > 0 && (
+                <Field className="sm:col-span-4">
+                  <FieldLabel htmlFor="cf-exp">For which expediente</FieldLabel>
+                  <Select value={fieldExpediente || "all"} onValueChange={(v) => setFieldExpediente(!v || v === "all" ? "" : v)}>
+                    <SelectTrigger id="cf-exp">
+                      <SelectValue getLabel={(v) => (v === "all" ? "All expedientes of this client" : (expedientes.data?.find((e) => e.id === v)?.code ?? v))} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All expedientes of this client</SelectItem>
+                      {expedientes.data?.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.code} — {e.description}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
               <Field>
                 <FieldLabel htmlFor="cf-name">Name</FieldLabel>
                 <Input

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { formatDate } from "@/lib/formatting"
 import { locationText } from "@/domain/location"
 import { requestChannelLabel } from "@/domain/request-channel"
+import { loanTypeLabel, loanTypeOf } from "@/domain/loan-type"
 
 /**
  * Witness slips (Docbox "Testigos"): one small slip per box of a dispatch / digitize order. It is left on the shelf in
@@ -32,7 +33,7 @@ export function WitnessSlipDocument({ orderId }: { orderId: string }) {
           <article key={l.id} className="space-y-1.5 break-inside-avoid rounded border-2 border-dashed border-black p-3">
             <div className="flex items-baseline justify-between">
               <h2 className="text-xs font-bold tracking-widest uppercase">Witness slip — box out</h2>
-              {order.urgent && <span className="text-xs font-bold uppercase">Urgent</span>}
+              {loanTypeOf(order) && loanTypeOf(order) !== "normal" && <span className="text-xs font-bold uppercase">{loanTypeLabel(loanTypeOf(order))}</span>}
             </div>
             <p className="font-mono text-xl font-semibold">{l.boxNumber}</p>
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">

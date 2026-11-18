@@ -17,6 +17,7 @@ import { StoredLocation } from "@/components/location-path"
 import { locationText } from "@/domain/location"
 import { Skeleton } from "@/components/ui/skeleton"
 import { requestChannelLabel } from "@/domain/request-channel"
+import { loanTypeLabel, loanTypeOf } from "@/domain/loan-type"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -76,7 +77,9 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
           <OrderTypeLabel type={order.type} />
           <OrderStatusBadge status={order.status} />
           {order.permanentWithdrawal && <Badge variant="outline">Permanent withdrawal</Badge>}
-          {order.urgent && <Badge variant="destructive">Urgent</Badge>}
+          {loanTypeOf(order) && loanTypeOf(order) !== "normal" && (
+            <Badge variant={loanTypeOf(order) === "fax" ? "outline" : "destructive"}>{loanTypeLabel(loanTypeOf(order))}</Badge>
+          )}
           {order.requestChannel && <Badge variant="outline">{requestChannelLabel(order.requestChannel)}</Badge>}
         </div>
         <p className="text-muted-foreground text-sm">

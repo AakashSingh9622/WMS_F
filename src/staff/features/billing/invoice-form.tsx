@@ -17,6 +17,7 @@ import { SAGE_TAX_RATES } from "@/api/sage"
 import type { Order } from "@/api/types"
 import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 import { addDaysISO, formatMoney, todayISO } from "@/lib/formatting"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -126,9 +127,19 @@ export function InvoiceForm({
   const setLine = (key: string, patch: Partial<DraftLine>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)))
 
-  async function suggest() {
+  const [askReplace, setAskReplace] = useState(false)
+
+  function suggest() {
     if (!clientId || !periodFrom || !periodTo) return
-    if (lines.length > 0 && !window.confirm("Replace the current lines with suggested ones?")) return
+    if (lines.length > 0) {
+      setAskReplace(true)
+      return
+    }
+    void runSuggest()
+  }
+
+  async function runSuggest() {
+    if (!clientId || !periodFrom || !periodTo) return
     setSuggesting(true)
     try {
       const res = await fetchSuggestedLines(clientId, periodFrom, periodTo)
@@ -226,6 +237,14 @@ export function InvoiceForm({
                   >
                     {suggesting ? "Suggesting…" : "Suggest lines"}
                   </Button>
+                  <ConfirmDialog
+                    open={askReplace}
+                    onOpenChange={setAskReplace}
+                    title="Replace the current lines?"
+                    description="The lines you have now will be replaced with the suggested ones for this client and period."
+                    confirmLabel="Replace lines"
+                    onConfirm={runSuggest}
+                  />
                 </div>
                 <FieldDescription>
                   Suggestions: boxes in storage, boxes registered in the period, and orders completed in the period that

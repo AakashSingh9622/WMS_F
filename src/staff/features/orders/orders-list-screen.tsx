@@ -15,6 +15,8 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { orderColumns } from "@/staff/features/orders/order-columns"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { useUrlFilters } from "@/hooks/useUrlFilters"
+import { LOAN_TYPES } from "@/domain/loan-type"
+import { REQUEST_CHANNELS } from "@/domain/request-channel"
 import type { OrderStatus, OrderType } from "@/api/types"
 
 const PAGE_SIZE = 25
@@ -52,11 +54,34 @@ export function OrdersListScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the typed text settling
   }, [debounced])
   const type = (params.type as OrderType | undefined) || undefined
+  const loanType = params.loanType || undefined
+  const channel = params.channel || undefined
+  const from = params.from || undefined
+  const to = params.to || undefined
+  const urlRequester = params.requester ?? ""
+  const [requesterText, setRequesterText] = useState(urlRequester)
+  const debouncedRequester = useDebounce(requesterText.trim(), 350)
+  useEffect(() => {
+    if (debouncedRequester !== urlRequester) setParams({ requester: debouncedRequester || undefined, page: undefined })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the typed text settling
+  }, [debouncedRequester])
+  const anyFilter = !!(urlQuery || type || loanType || channel || from || to || urlRequester)
 
   const { data, isLoading } = useOrderSearch(
     useMemo(
-      () => ({ status: activeTab.statuses, q: urlQuery || undefined, type, page, pageSize: PAGE_SIZE }),
-      [activeTab, urlQuery, type, page],
+      () => ({
+        status: activeTab.statuses,
+        q: urlQuery || undefined,
+        type,
+        loanType,
+        requestChannel: channel,
+        requester: urlRequester || undefined,
+        from,
+        to,
+        page,
+        pageSize: PAGE_SIZE,
+      }),
+      [activeTab, urlQuery, type, loanType, channel, urlRequester, from, to, page],
     ),
   )
 
@@ -101,13 +126,88 @@ export function OrdersListScreen() {
               ))}
             </SelectContent>
           </Select>
-          {(urlQuery || type) && (
+          <Select
+            value={loanType ?? "all"}
+            onValueChange={(v) => setParams({ loanType: v && v !== "all" ? v : undefined, page: undefined })}
+          >
+            <SelectTrigger className="w-40" aria-label="Loan type">
+              <SelectValue
+                getLabel={(v) => (v === "all" ? "All loan types" : (LOAN_TYPES.find((t) => t.value === v)?.label ?? v))}
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All loan types</SelectItem>
+              {LOAN_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={channel ?? "all"}
+            onValueChange={(v) => setParams({ channel: v && v !== "all" ? v : undefined, page: undefined })}
+          >
+            <SelectTrigger className="w-44" aria-label="How the client asked">
+              <SelectValue
+                getLabel={(v) => (v === "all" ? "Any channel" : (REQUEST_CHANNELS.find((c) => c.value === v)?.label ?? v))}
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Any channel</SelectItem>
+              {REQUEST_CHANNELS.map((c) => (
+                <SelectItem key={c.value} value={c.value}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            value={requesterText}
+            onChange={(e) => setRequesterText(e.target.value)}
+            placeholder="Requested by…"
+            aria-label="Requested by"
+            className="w-40"
+          />
+          <label className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            From
+            <Input
+              type="date"
+              value={from ?? ""}
+              max={to}
+              onChange={(e) => setParams({ from: e.target.value || undefined, page: undefined })}
+              className="w-36"
+              aria-label="Requested from"
+            />
+          </label>
+          <label className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            To
+            <Input
+              type="date"
+              value={to ?? ""}
+              min={from}
+              onChange={(e) => setParams({ to: e.target.value || undefined, page: undefined })}
+              className="w-36"
+              aria-label="Requested to"
+            />
+          </label>
+          {anyFilter && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 setText("")
-                setParams({ q: undefined, type: undefined, page: undefined })
+                setRequesterText("")
+                setParams({
+                  q: undefined,
+                  type: undefined,
+                  loanType: undefined,
+                  channel: undefined,
+                  requester: undefined,
+                  from: undefined,
+                  to: undefined,
+                  page: undefined,
+                })
               }}
             >
               Clear

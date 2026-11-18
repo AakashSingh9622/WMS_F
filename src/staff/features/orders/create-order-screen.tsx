@@ -14,6 +14,7 @@ import { projectIdOf, useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 import { useCreateOrder } from "@/api/orders"
 import { BoxPicker } from "@/components/box-picker"
 import { BoxListImport } from "@/staff/features/orders/box-list-import"
+import { LOAN_TYPES, loanTypeLabel, type LoanType } from "@/domain/loan-type"
 import { REQUEST_CHANNELS, type RequestChannel } from "@/domain/request-channel"
 import { OrderTypeLabel } from "@/components/order-type-icon"
 import { Button } from "@/components/ui/button"
@@ -53,7 +54,7 @@ export function CreateOrderScreen() {
   const [scheduledFor, setScheduledFor] = useState("")
   const [notes, setNotes] = useState("")
   const [permanentWithdrawal, setPermanentWithdrawal] = useState(false)
-  const [urgent, setUrgent] = useState(false)
+  const [loanType, setLoanType] = useState<LoanType>("normal")
   const [requestChannel, setRequestChannel] = useState<RequestChannel | "">("")
   const [error, setError] = useState<string | null>(null)
 
@@ -139,7 +140,7 @@ export function CreateOrderScreen() {
         scheduledFor: scheduledFor || undefined,
         notes: notes || undefined,
         permanentWithdrawal: type === "dispatch" ? permanentWithdrawal : undefined,
-        urgent: (type === "dispatch" || type === "digitize") && urgent ? true : undefined,
+        loanType: type === "dispatch" || type === "digitize" ? loanType : undefined,
         requestChannel: requestChannel || undefined,
       })
       toast.success(`Order ${order.orderNumber} created`)
@@ -235,6 +236,11 @@ export function CreateOrderScreen() {
                   </Field>
                   <Field>
                     <FieldLabel>Returning boxes (currently out with this client)</FieldLabel>
+                    <BoxListImport
+                      clientId={clientId}
+                      type="collection"
+                      onBoxes={(ids) => setBoxIds((prev) => [...new Set([...prev, ...ids])])}
+                    />
                     <BoxPicker
                       boxes={clientBoxes?.items ?? []}
                       type="collection"
@@ -358,15 +364,24 @@ export function CreateOrderScreen() {
               </Field>
 
               {(type === "dispatch" || type === "digitize") && (
-                <label className="flex cursor-pointer items-start gap-3 text-sm">
-                  <Checkbox className="mt-0.5" checked={urgent} onCheckedChange={(v) => setUrgent(!!v)} />
-                  <span>
-                    <span className="font-medium">Urgent</span>
-                    <span className="text-muted-foreground block text-xs">
-                      Handle ahead of normal requests. It is shown on the order and counted separately in reports.
-                    </span>
-                  </span>
-                </label>
+                <Field>
+                  <FieldLabel htmlFor="loan-type">Loan type</FieldLabel>
+                  <Select value={loanType} onValueChange={(v) => setLoanType((v as LoanType) ?? "normal")}>
+                    <SelectTrigger id="loan-type">
+                      <SelectValue getLabel={(v) => loanTypeLabel(v) ?? v} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LOAN_TYPES.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-muted-foreground text-xs">
+                    {LOAN_TYPES.find((t) => t.value === loanType)?.hint} It is shown on the order and counted in reports.
+                  </p>
+                </Field>
               )}
 
               <Field>
