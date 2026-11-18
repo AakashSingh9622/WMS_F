@@ -5,11 +5,8 @@ import { toast } from "sonner"
 
 import { useClientProfile, useSaveClientProfile, type ClientProfile } from "@/api/clientProfile"
 import { useCustomFields } from "@/api/customFields"
-import {
-  DEFAULT_DELIVERY_COLUMNS,
-  DELIVERY_COLUMN_KEYS,
-  deliveryColumnLabel,
-} from "@/domain/delivery-columns"
+import { DEFAULT_DELIVERY_COLUMNS } from "@/domain/delivery-columns"
+import { DeliveryColumnsPicker } from "@/components/delivery-columns-picker"
 import { useCan } from "@/auth/useAuth"
 import { Button } from "@/components/ui/button"
 import { Field, FieldLabel } from "@/components/ui/field"
@@ -83,52 +80,14 @@ function DeliveryColumnsEditor({ clientId, profile }: { clientId: string; profil
   const { data: fields = [] } = useCustomFields(clientId)
   const saved = profile.deliveryColumns.length ? profile.deliveryColumns : DEFAULT_DELIVERY_COLUMNS
   const [chosen, setChosen] = useState<string[]>(saved)
-  const everything = [...DELIVERY_COLUMN_KEYS, ...fields.map((f) => f.code)] as string[]
-  // chosen first (in order), then the rest unticked
-  const rows = [...chosen.filter((k) => everything.includes(k)), ...everything.filter((k) => !chosen.includes(k))]
   const dirty = JSON.stringify(chosen) !== JSON.stringify(saved)
-  const move = (key: string, by: -1 | 1) => {
-    const i = chosen.indexOf(key)
-    const j = i + by
-    if (i < 0 || j < 0 || j >= chosen.length) return
-    const next = [...chosen]
-    ;[next[i], next[j]] = [next[j], next[i]]
-    setChosen(next)
-  }
   return (
     <section className="max-w-xl space-y-3 border-t pt-6">
       <div>
         <h2 className="text-sm font-semibold">Delivery note columns</h2>
         <p className="text-muted-foreground text-xs">What the delivery note lists for each box, in this order.</p>
       </div>
-      <ul className="divide-y rounded-lg border text-sm">
-        {rows.map((key) => {
-          const on = chosen.includes(key)
-          return (
-            <li key={key} className="flex items-center gap-3 px-3 py-1.5">
-              <label className="flex flex-1 items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={on}
-                  disabled={!canEdit}
-                  onChange={(e) => setChosen(e.target.checked ? [...chosen, key] : chosen.filter((k) => k !== key))}
-                />
-                <span className={on ? "" : "text-muted-foreground"}>{deliveryColumnLabel(key, fields)}</span>
-              </label>
-              {on && canEdit && (
-                <span className="flex gap-1">
-                  <Button variant="ghost" size="sm" aria-label="Move up" disabled={chosen[0] === key} onClick={() => move(key, -1)}>
-                    ↑
-                  </Button>
-                  <Button variant="ghost" size="sm" aria-label="Move down" disabled={chosen[chosen.length - 1] === key} onClick={() => move(key, 1)}>
-                    ↓
-                  </Button>
-                </span>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+      <DeliveryColumnsPicker fields={fields} value={chosen} onChange={setChosen} canEdit={canEdit} />
       {canEdit && (
         <Button
           disabled={!dirty || save.isPending}

@@ -9,6 +9,8 @@ export const expedienteSchema = z.object({
   clientId: z.string(),
   code: z.string(),
   description: z.string(),
+  format: z.string(), // delivery-note template (Docbox "Formato"): see domain/delivery-format
+  deliveryColumns: z.array(z.string()), // fields on the delivery note, in order ("Ordenacion C1,C2,C3"); empty = the client's own choice
   createdAt: z.string(),
 })
 export type Expediente = z.infer<typeof expedienteSchema>
@@ -36,8 +38,8 @@ export function useCreateExpediente() {
 export function useUpdateExpediente() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, description }: { id: string; description: string }) =>
-      parse(expedienteSchema, await apiClient.patch(`/expedientes/${id}`, { description })),
+    mutationFn: async ({ id, ...patch }: { id: string; description?: string; format?: string; deliveryColumns?: string[] }) =>
+      parse(expedienteSchema, await apiClient.patch(`/expedientes/${id}`, patch)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["expedientes"] }),
   })
 }

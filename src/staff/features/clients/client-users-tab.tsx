@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { useContactPermissions, useSetContactPermission } from "@/api/clientProfile"
 import { useCan } from "@/auth/useAuth"
+import { useExpedientes } from "@/api/expedientes"
 import { useClientCard } from "@/hooks/useClientCard"
 import type { DocusoftContact } from "@/store/docusoftApi"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +25,7 @@ export function ClientUsersTab({ clientId }: { clientId: string }) {
   const { contacts, needsFolder, isLoading, isError } = useClientCard(clientId)
   const { data: permissions } = useContactPermissions(clientId)
   const setPermission = useSetContactPermission(clientId)
+  const { data: expedientes = [] } = useExpedientes(clientId)
   const canEdit = useCan("settings.manage")
 
   if (needsFolder) {
@@ -93,6 +95,33 @@ export function ClientUsersTab({ clientId }: { clientId: string }) {
                       </label>
                     )
                   })}
+                </div>
+              )}
+              {email && expedientes.length > 0 && (
+                // Docbox "Permisos Web": which files this contact sees on the portal. None ticked = all of them.
+                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs">
+                  <span className="text-muted-foreground">Portal files:</span>
+                  {expedientes.map((e) => {
+                    const given = permissions?.find((p) => p.email === email.toLowerCase())?.expedienteIds ?? []
+                    const on = given.includes(e.id)
+                    return (
+                      <label key={e.id} className="flex items-center gap-1.5" title={e.description}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={!canEdit || setPermission.isPending}
+                          onChange={(ev) =>
+                            setPermission.mutate(
+                              { email, expedienteIds: ev.target.checked ? [...given, e.id] : given.filter((id) => id !== e.id) },
+                              { onError: (err) => toast.error(err instanceof Error ? err.message : "Couldn't save") }
+                            )
+                          }
+                        />
+                        {e.code}
+                      </label>
+                    )
+                  })}
+                  {!(permissions?.find((p) => p.email === email.toLowerCase())?.expedienteIds.length) && <span className="text-muted-foreground">(all files)</span>}
                 </div>
               )}
             </div>

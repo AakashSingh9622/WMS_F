@@ -37,7 +37,7 @@ export function useSaveClientProfile(clientId: string) {
 }
 
 /** What a contact may do: ask for loans (boxes, scans) and / or for destruction. No row = allowed. */
-const permissionSchema = z.object({ email: z.string(), canLoan: z.boolean(), canPurge: z.boolean() })
+const permissionSchema = z.object({ email: z.string(), canLoan: z.boolean(), canPurge: z.boolean(), expedienteIds: z.array(z.string()) })
 export type ContactPermission = z.infer<typeof permissionSchema>
 
 export function useContactPermissions(clientId: string) {
@@ -52,7 +52,7 @@ export function useContactPermissions(clientId: string) {
 export function useSetContactPermission(clientId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ email, ...flags }: { email: string; canLoan?: boolean; canPurge?: boolean }) =>
+    mutationFn: async ({ email, ...flags }: { email: string; canLoan?: boolean; canPurge?: boolean; expedienteIds?: string[] }) =>
       parse(
         permissionSchema,
         await apiClient.put(`/clients/${encodeURIComponent(clientId)}/contact-permissions/${encodeURIComponent(email.toLowerCase())}`, flags)

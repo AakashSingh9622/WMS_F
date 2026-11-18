@@ -13,6 +13,9 @@ import {
 } from "@/api/customFields"
 import { useCreateExpediente, useDeleteExpediente, useExpedientes, useUpdateExpediente, type Expediente } from "@/api/expedientes"
 import { ConfirmDialog } from "@/components/confirm-dialog"
+import { DeliveryColumnsPicker } from "@/components/delivery-columns-picker"
+import { DELIVERY_FORMATS, DELIVERY_FORMAT_LABELS } from "@/domain/delivery-format"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,8 +28,83 @@ import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 
 const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "That didn't work")
 
+/**
+ * Docbox "Formato" and "Ordenación C1,C2,C3" of one expediente: the delivery-note template, and which fields the note
+ * prints and in what order. With no field chosen here, the note uses the client's own choice (Clients → delivery note columns).
+ */
+function DeliveryNoteDialog({ expediente, fields }: { expediente: Expediente; fields: CustomField[] }) {
+  const update = useUpdateExpediente()
+  const [open, setOpen] = useState(false)
+  const [format, setFormat] = useState(expediente.format)
+  const [columns, setColumns] = useState<string[]>(expediente.deliveryColumns)
+  // only the fields this expediente can have: the client's shared ones and its own
+  const own = fields.filter((f) => f.active && (!f.expedienteId || f.expedienteId === expediente.id))
+  const dirty = format !== expediente.format || JSON.stringify(columns) !== JSON.stringify(expediente.deliveryColumns)
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (next) {
+          setFormat(expediente.format)
+          setColumns(expediente.deliveryColumns)
+        }
+      }}
+    >
+      <DialogTrigger render={<Button variant="outline" size="sm" />}>Delivery note</DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Delivery note of {expediente.code}</DialogTitle>
+          <DialogDescription>Which template it prints with, and which fields it lists for each box, in this order.</DialogDescription>
+        </DialogHeader>
+        <Field>
+          <FieldLabel htmlFor="exp-format">Format (Formato)</FieldLabel>
+          <Select value={format} onValueChange={(v) => v && setFormat(v)}>
+            <SelectTrigger id="exp-format">
+              <SelectValue getLabel={(v) => DELIVERY_FORMAT_LABELS[v as keyof typeof DELIVERY_FORMAT_LABELS]?.name ?? v} />
+            </SelectTrigger>
+            <SelectContent>
+              {DELIVERY_FORMATS.map((f) => (
+                <SelectItem key={f} value={f}>
+                  {DELIVERY_FORMAT_LABELS[f].name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-muted-foreground text-xs">{DELIVERY_FORMAT_LABELS[format as keyof typeof DELIVERY_FORMAT_LABELS]?.hint}</p>
+        </Field>
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Fields on the note (Ordenación)</p>
+          <DeliveryColumnsPicker fields={own} value={columns} onChange={setColumns} />
+          <p className="text-muted-foreground text-xs">Leave all unticked to use the client&apos;s own choice. The box number is always printed.</p>
+        </div>
+        <DialogFooter>
+          <Button
+            disabled={!dirty || update.isPending}
+            onClick={() =>
+              update.mutate(
+                { id: expediente.id, format, deliveryColumns: columns },
+                {
+                  onSuccess: () => {
+                    toast.success("Delivery note saved")
+                    setOpen(false)
+                  },
+                  onError,
+                }
+              )
+            }
+          >
+            {update.isPending ? "Saving…" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /** One expediente of the client: its description can change, and it can go while no box is in it. */
-function ExpedienteRow({ expediente }: { expediente: Expediente }) {
+function ExpedienteRow({ expediente, fields }: { expediente: Expediente; fields: CustomField[] }) {
   const update = useUpdateExpediente()
   const remove = useDeleteExpediente()
   const [description, setDescription] = useState(expediente.description)
@@ -49,7 +127,8 @@ function ExpedienteRow({ expediente }: { expediente: Expediente }) {
           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
         />
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="space-x-2 text-right">
+        <DeliveryNoteDialog expediente={expediente} fields={fields} />
         <Button
           variant="outline"
           size="sm"
@@ -82,6 +161,7 @@ function ExpedienteRow({ expediente }: { expediente: Expediente }) {
 /** Docbox "Expedientes - Clientes": the client's files (PLANOS, …). Optional — a client without any works as before. */
 function ExpedientesCard({ clientId }: { clientId: string }) {
   const list = useExpedientes(clientId)
+  const fieldList = useCustomFields(clientId, { includeInactive: true })
   const create = useCreateExpediente()
   const [code, setCode] = useState("")
   const [description, setDescription] = useState("")
@@ -122,7 +202,7 @@ function ExpedientesCard({ clientId }: { clientId: string }) {
             </TableHeader>
             <TableBody>
               {list.data.map((e) => (
-                <ExpedienteRow key={`${e.id}:${e.description}`} expediente={e} />
+                <ExpedienteRow key={`${e.id}:${e.description}`} expediente={e} fields={fieldList.data ?? []} />
               ))}
             </TableBody>
           </Table>
