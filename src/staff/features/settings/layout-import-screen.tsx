@@ -39,7 +39,19 @@ function toRows(
   const at = COLUMNS.map((c) => head.findIndex((h) => c.names.includes(norm(h))))
   const missing = COLUMNS.filter((c, i) => !(c.optional || (c.key === "warehouse" && target)) && at[i] < 0).map((c) => c.header)
   if (missing.length) return { rows: [], problem: `Missing column${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}. Use the template.` }
-  if (body.length === 0) return { rows: [], problem: "The file has a header but no rows." }
+  // The boxes template has the same location columns, so it passes the check above. Say so, instead of a row of "empty" errors.
+  const heads = head.map(norm)
+  if (heads.includes("description") && heads.includes("filingfrom")) {
+    return {
+      rows: [],
+      problem:
+        "This is the boxes template (it has Description and Filing from columns), not a layout file. To add boxes use Find a box → Import from a file. To build a warehouse, download the layout template in step 1.",
+    }
+  }
+  // Blank rows at the end (Excel keeps formatted empty rows) are not shelves; ignore them.
+  const isBlank = (cells: string[]) => !COLUMNS.some((_, i) => at[i] >= 0 && (cells[at[i]] ?? "").trim() !== "")
+  while (body.length > 0 && isBlank(body[body.length - 1])) body.pop()
+  if (body.length === 0) return { rows: [], problem: "The file has a header but no shelf rows. Fill in Floor, Aisle, Module and Shelf for each shelf." }
   if (body.length > MAX_ROWS) return { rows: [], problem: `At most ${MAX_ROWS} rows per file — split it.` }
   const rows = body.map((cells) => Object.fromEntries(COLUMNS.map((c, i) => [c.key, (at[i] >= 0 ? (cells[at[i]] ?? "") : "").trim()])) as unknown as LayoutRow)
   if (target) {
@@ -133,9 +145,14 @@ export function LayoutImportScreen() {
   return (
     <div className="max-w-3xl space-y-6">
       <div>
-        <h2 className="text-base font-semibold">Import layout</h2>
+        <h2 className="text-base font-semibold">Warehouse layout</h2>
         <p className="text-muted-foreground text-sm">
-          Build a whole warehouse from an Excel (.xlsx) or CSV file — one row per shelf. Everything is checked first; a file with a problem creates nothing.
+          Build a whole warehouse from an Excel (.xlsx) or CSV file — one row per shelf. Everything is checked first; a file with a problem creates nothing.{" "}
+          To add or change one module, or to block a slot, open it from{" "}
+          <Link href="/app/warehouses" className="text-primary underline-offset-4 hover:underline">
+            Warehouses
+          </Link>
+          .
         </p>
       </div>
 

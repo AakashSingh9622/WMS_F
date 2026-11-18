@@ -238,6 +238,11 @@ function PlaceSection({
     { key: "placeModule", label: "Shelving unit / Module" },
     { key: "placeShelf", label: "Row / Shelf" },
   ]
+  // Anything typed in the place makes the module and a shelf number required (see draftProblem): mark what is missing.
+  const placeAny = fields.some((f) => draft[f.key].trim())
+  const missing: Partial<Record<(typeof fields)[number]["key"], string>> = {}
+  if (placeAny && !draft.placeModule.trim()) missing.placeModule = "Required: which module?"
+  if (placeAny && !/^d+$/.test(draft.placeShelf.trim())) missing.placeShelf = "Required: a shelf number, e.g. 1"
   return (
     <Section
       title="Put them on a shelf now (optional)"
@@ -266,14 +271,19 @@ function PlaceSection({
       )}
       {fields.map((f) => (
         <Field key={f.key}>
-          <FieldLabel htmlFor={`place-${f.key}`}>{f.label}</FieldLabel>
+          <FieldLabel htmlFor={`place-${f.key}`}>
+            {f.label}
+            {missing[f.key] && <span className="text-destructive"> *</span>}
+          </FieldLabel>
           <Input
             id={`place-${f.key}`}
             value={draft[f.key]}
             inputMode={f.key === "placeShelf" ? "numeric" : undefined}
             placeholder={f.hint}
+            aria-invalid={!!missing[f.key]}
             onChange={(e) => set(f.key, f.key === "placeShelf" ? e.target.value.replace(/\D/g, "") : e.target.value)}
           />
+          {missing[f.key] && <FieldError errors={[{ message: missing[f.key] }]} />}
         </Field>
       ))}
     </Section>
@@ -706,7 +716,7 @@ function NewBatch({
             ? "Registering…"
             : `Register ${draft.quantity} box${draft.quantity === 1 ? "" : "es"} →`}
         </Button>
-        <p className="text-muted-foreground text-xs">
+        <p className={problem ? "text-destructive text-xs font-medium" : "text-muted-foreground text-xs"}>
           {problem ?? "Box numbers are given when you register. Next you print the labels, then put the boxes on a shelf."}
         </p>
       </SummaryPanel>

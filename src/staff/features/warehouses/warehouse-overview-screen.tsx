@@ -8,7 +8,8 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { useCan } from "@/auth/useAuth"
-import { useCreateRack, useDeleteWarehouse, useUpdateWarehouse, useWarehouse, useWarehouseLayout, useWarehouses } from "@/api/warehouses"
+import { useCreateRack, useDeleteWarehouse, useUpdateWarehouse, useWarehouse, useWarehouseLayout } from "@/api/warehouses"
+import { useSites } from "@/api/sites"
 import type { Rack, Warehouse, WarehouseLayout } from "@/api/types"
 import { CapacityBar } from "@/components/capacity-bar"
 import { ConfirmDialog } from "@/components/confirm-dialog"
@@ -37,7 +38,7 @@ function EditWarehouseDialog({ warehouse }: { warehouse: Warehouse }) {
   const [name, setName] = useState(warehouse.name)
   const [site, setSite] = useState(warehouse.site ?? "")
   const [address, setAddress] = useState(warehouse.address ?? "")
-  const { data: warehouses } = useWarehouses()
+  const { data: sites } = useSites()
   const update = useUpdateWarehouse()
   const remove = useDeleteWarehouse()
 
@@ -88,12 +89,12 @@ function EditWarehouseDialog({ warehouse }: { warehouse: Warehouse }) {
             <FieldLabel htmlFor="wh-edit-site">Site (Sede)</FieldLabel>
             <Input id="wh-edit-site" list="wh-edit-sites" value={site} maxLength={80} onChange={(e) => setSite(e.target.value)} />
             <datalist id="wh-edit-sites">
-              {[...new Set((warehouses ?? []).map((w) => w.site).filter(Boolean))].map((s) => (
-                <option key={s} value={s} />
+              {(sites ?? []).map((s) => (
+                <option key={s.name} value={s.name} />
               ))}
             </datalist>
             <p className="text-muted-foreground text-xs">
-              Groups warehouses under one head office or site. Leave it empty for none. The place shown on this warehouse&apos;s boxes is updated.
+              Groups warehouses under one head office or site (add sites under Settings → Sites). Leave it empty for none. The place shown on this warehouse&apos;s boxes is updated.
             </p>
           </Field>
           <Field>

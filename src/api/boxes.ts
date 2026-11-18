@@ -27,10 +27,17 @@ export interface BoxSearchInput {
   rackId?: string
   row?: number
   orderId?: string
-  /** Search one of the client's own fields (needs clientId): code (C1…), the text, exact or contains. */
-  cfCode?: string
-  cfValue?: string
-  cfMode?: "exact" | "contains"
+  /** Up to four of the client's own fields (Docbox "Campo / Dato"): code (C1…), the text, exact (=) or contains (Like). */
+  cf?: { code: string; value: string; mode: "exact" | "contains" }[]
+  /** "and" (Docbox "Y": every field must match, the default) or "or" ("O": any). */
+  cfJoin?: "and" | "or"
+  /** Ranges (Docbox "Num entre"): box numbers, pallet numbers, container numbers (whole numbers). */
+  boxFrom?: string
+  boxTo?: string
+  palletFrom?: string
+  palletTo?: string
+  containerFrom?: string
+  containerTo?: string
   page?: number
   pageSize?: number
 }
@@ -52,10 +59,12 @@ function toSearchParams(input: BoxSearchInput): URLSearchParams {
   if (input.rackId) sp.set("rackId", input.rackId)
   if (input.row) sp.set("row", String(input.row))
   if (input.orderId) sp.set("orderId", input.orderId)
-  if (input.cfCode && input.cfValue) {
-    sp.set("cfCode", input.cfCode)
-    sp.set("cfValue", input.cfValue)
-    if (input.cfMode) sp.set("cfMode", input.cfMode)
+  if (input.cf?.length) {
+    sp.set("cfs", JSON.stringify(input.cf))
+    if (input.cfJoin === "or") sp.set("cfJoin", "or")
+  }
+  for (const key of ["boxFrom", "boxTo", "palletFrom", "palletTo", "containerFrom", "containerTo"] as const) {
+    if (input[key]) sp.set(key, input[key] as string)
   }
   if (input.onHold !== undefined) sp.set("onHold", String(input.onHold))
   if (input.page) sp.set("page", String(input.page))

@@ -64,6 +64,8 @@ export const routeLabels: Record<string, string> = {
   profile: "Profile",
   signature: "My signature",
   "warehouse-layout": "Warehouse layout",
+  "layout-import": "Warehouse layout",
+  sites: "Sites",
   labels: "Labels",
   inventory: "Inventory",
 }

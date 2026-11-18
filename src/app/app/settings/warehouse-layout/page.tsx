@@ -1,7 +1,6 @@
-import { requirePermission } from "@/auth/session"
-import { WarehouseLayoutScreen } from "@/staff/features/settings/warehouse-layout-screen"
+import { redirect } from "next/navigation"
 
-export default async function WarehouseLayoutSettingsPage() {
-  await requirePermission("layout.manage")
-  return <WarehouseLayoutScreen />
+// The old list page is gone (Warehouses shows the same list and more); old links and bookmarks land there.
+export default function WarehouseLayoutSettingsPage() {
+  redirect("/app/warehouses")
 }

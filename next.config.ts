@@ -49,6 +49,8 @@ const nextConfig: NextConfig = {
       { source: "/api/custom-fields", destination: `${BACKEND_API_URL}/api/custom-fields` },
       { source: "/api/custom-fields/:path*", destination: `${BACKEND_API_URL}/api/custom-fields/:path*` },
       // A client's expedientes (Docbox "Expedientes - Clientes").
+      // The sites (Docbox "Sedes") warehouses belong to.
+      { source: "/api/sites", destination: `${BACKEND_API_URL}/api/sites` },
       { source: "/api/expedientes", destination: `${BACKEND_API_URL}/api/expedientes` },
       { source: "/api/expedientes/:path*", destination: `${BACKEND_API_URL}/api/expedientes/:path*` },
       { source: "/api/reports/:path*", destination: `${BACKEND_API_URL}/api/reports/:path*` },

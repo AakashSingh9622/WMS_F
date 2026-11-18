@@ -14,11 +14,13 @@ import { useWarehouses } from "@/api/warehouses"
 import { BOX_STATUS_META } from "@/domain/status"
 import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { boxStatusSchema } from "@/api/types"
+import { boxStatusSchema, type BoxStatus } from "@/api/types"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useUrlFilters } from "@/hooks/useUrlFilters"
 import { DataTable } from "@/components/data-table"
 import { boxColumns } from "@/staff/features/boxes/box-columns"
+import { FIELD_PARAM_KEYS, FieldSearch, readFieldConditions, type FieldCondition } from "@/staff/features/boxes/field-search"
+import { TextFilter } from "@/staff/features/boxes/text-filter"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -26,26 +28,15 @@ import { Label } from "@/components/ui/label"
 
 const PAGE_SIZE = 25
 
-/** A small text filter that applies on Enter or when you leave the box (so typing doesn't reload the list on every key). */
-function TextFilter({ label, value, onCommit, numeric = false }: { label: string; value: string; onCommit: (value: string) => void; numeric?: boolean }) {
-  return (
-    <Input
-      key={`${label}:${value}`}
-      defaultValue={value}
-      placeholder={label}
-      aria-label={label}
-      inputMode={numeric ? "numeric" : undefined}
-      className="w-36"
-      onBlur={(e) => {
-        const next = (numeric ? e.target.value.replace(/\D/g, "") : e.target.value).trim()
-        if (next !== value) onCommit(next)
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur()
-      }}
-    />
-  )
-}
+// Docbox "Estado": Archivado (on the shelf), Prestado (with the client), Transito (on its way).
+const STATE_GROUPS = [
+  { key: "archived", label: "Archived", statuses: ["stored", "reserved"] as BoxStatus[] },
+  { key: "loan", label: "On loan", statuses: ["out"] as BoxStatus[] },
+  { key: "transit", label: "In transit", statuses: ["picked", "received"] as BoxStatus[] },
+]
+
+// clearing the client / expediente also clears the client's own field rows
+const clearedFields = Object.fromEntries(FIELD_PARAM_KEYS.map((k) => [k, undefined]))
 
 export function FindABoxScreen() {
   const router = useRouter()
@@ -64,15 +55,16 @@ export function FindABoxScreen() {
   const { data: expedientes } = useExpedientes(clientId)
   const expedienteId = expedientes?.some((e) => e.id === params.exp) ? params.exp : undefined
   const { data: fields } = useCustomFields(clientId, { expedienteId })
-  const cfCode = fields?.some((f) => f.code === params.cf) ? params.cf : undefined
-  const [cfText, setCfText] = useState(params.cfv ?? "")
-  const debouncedCf = useDebounce(cfText, 300)
-  const cfExact = params.cfm === "exact"
+  const conditions = readFieldConditions(params, fields)
+  const conditionsKey = JSON.stringify(conditions)
+  const cfJoin = params.cj === "or" ? ("or" as const) : undefined
   // Where it is, and pallet / container (Docbox "Busqueda"): kept in the URL so a location link can open this list.
   const { data: warehouses } = useWarehouses()
   const statusFilter = boxStatusSchema.options.find((s) => s === params.st)
+  // Docbox "Estado": Archivado / Prestado / Transito, as a quick choice over the individual statuses.
+  const group = STATE_GROUPS.find((g) => g.key === params.grp)
   const shelfNo = /^\d+$/.test(params.shelf ?? "") ? Number(params.shelf) : undefined
-  const placeFilters = [params.site, params.wh, params.zone, params.aisle, params.module, params.shelf, params.pallet, params.container, params.st]
+  const placeFilters = [params.site, params.wh, params.zone, params.aisle, params.module, params.shelf, params.pallet, params.container, params.st, params.grp, params.boxFrom, params.boxTo, params.palletFrom, params.palletTo, params.containerFrom, params.containerTo, ...FIELD_PARAM_KEYS.map((k) => params[k])]
 
   const { data, isLoading } = useBoxSearch(
     useMemo(
@@ -80,9 +72,14 @@ export function FindABoxScreen() {
         q: debouncedQ || undefined,
         clientId: clientId || undefined,
         expedienteId,
-        cfCode,
-        cfValue: cfCode ? debouncedCf || undefined : undefined,
-        cfMode: cfExact ? ("exact" as const) : ("contains" as const),
+        cf: conditionsKey === "[]" ? undefined : (JSON.parse(conditionsKey) as FieldCondition[]),
+        cfJoin,
+        boxFrom: params.boxFrom || undefined,
+        boxTo: params.boxTo || undefined,
+        palletFrom: params.palletFrom || undefined,
+        palletTo: params.palletTo || undefined,
+        containerFrom: params.containerFrom || undefined,
+        containerTo: params.containerTo || undefined,
         site: params.site || undefined,
         warehouse: params.wh || undefined,
         zone: params.zone || undefined,
@@ -91,12 +88,12 @@ export function FindABoxScreen() {
         row: shelfNo,
         palletNo: params.pallet || undefined,
         containerNo: params.container || undefined,
-        status: statusFilter ? [statusFilter] : missingOnly ? ["missing" as const] : includeDestroyed ? boxStatusSchema.options : undefined, // server defaults to excluding destroyed
+        status: statusFilter ? [statusFilter] : group ? group.statuses : missingOnly ? ["missing" as const] : includeDestroyed ? boxStatusSchema.options : undefined, // server defaults to excluding destroyed
         onHold: onHoldOnly ? true : undefined,
         page,
         pageSize: PAGE_SIZE,
       }),
-      [debouncedQ, clientId, expedienteId, cfCode, debouncedCf, cfExact, includeDestroyed, onHoldOnly, missingOnly, page, statusFilter, shelfNo, params.site, params.wh, params.zone, params.aisle, params.module, params.pallet, params.container],
+      [debouncedQ, clientId, expedienteId, conditionsKey, cfJoin, includeDestroyed, onHoldOnly, missingOnly, page, statusFilter, group, shelfNo, params.site, params.wh, params.zone, params.aisle, params.module, params.pallet, params.container, params.boxFrom, params.boxTo, params.palletFrom, params.palletTo, params.containerFrom, params.containerTo],
     ),
   )
 
@@ -176,7 +173,6 @@ export function FindABoxScreen() {
             size="sm"
             onClick={() => {
               setQ("")
-              setCfText("")
               clear()
             }}
           >
@@ -219,9 +215,31 @@ export function FindABoxScreen() {
         </div>
 
         <div className="flex w-full flex-wrap items-center gap-3 border-t pt-3">
+          <div className="flex items-center gap-1" role="group" aria-label="State">
+            <Button variant={group ? "outline" : "default"} size="sm" onClick={() => setParams({ grp: undefined, page: undefined })}>
+              All states
+            </Button>
+            {STATE_GROUPS.map((g) => (
+              <Button key={g.key} variant={group?.key === g.key ? "default" : "outline"} size="sm" onClick={() => setParams({ grp: g.key, st: undefined, page: undefined })}>
+                {g.label}
+              </Button>
+            ))}
+          </div>
+          <span className="text-muted-foreground text-xs">Box no.</span>
+          <TextFilter label="From" numeric className="w-24" value={params.boxFrom ?? ""} onCommit={(v) => setParams({ boxFrom: v || undefined, page: undefined })} />
+          <TextFilter label="To" numeric className="w-24" value={params.boxTo ?? ""} onCommit={(v) => setParams({ boxTo: v || undefined, page: undefined })} />
+          <span className="text-muted-foreground text-xs">Pallet</span>
+          <TextFilter label="From" numeric className="w-24" value={params.palletFrom ?? ""} onCommit={(v) => setParams({ palletFrom: v || undefined, page: undefined })} />
+          <TextFilter label="To" numeric className="w-24" value={params.palletTo ?? ""} onCommit={(v) => setParams({ palletTo: v || undefined, page: undefined })} />
+          <span className="text-muted-foreground text-xs">Container</span>
+          <TextFilter label="From" numeric className="w-24" value={params.containerFrom ?? ""} onCommit={(v) => setParams({ containerFrom: v || undefined, page: undefined })} />
+          <TextFilter label="To" numeric className="w-24" value={params.containerTo ?? ""} onCommit={(v) => setParams({ containerTo: v || undefined, page: undefined })} />
+        </div>
+
+        <div className="flex w-full flex-wrap items-center gap-3 border-t pt-3">
           <Select
             value={clientId}
-            onValueChange={(v) => setParams({ clientId: v || undefined, exp: undefined, cf: undefined, cfv: undefined, cfm: undefined, page: undefined })}
+            onValueChange={(v) => setParams({ clientId: v || undefined, exp: undefined, ...clearedFields, page: undefined })}
           >
             <SelectTrigger className="w-56" aria-label="Client">
               <SelectValue
@@ -238,7 +256,7 @@ export function FindABoxScreen() {
             </SelectContent>
           </Select>
           {expedientes && expedientes.length > 0 && (
-            <Select value={expedienteId ?? ""} onValueChange={(v) => setParams({ exp: v || undefined, cf: undefined, cfv: undefined, cfm: undefined, page: undefined })}>
+            <Select value={expedienteId ?? ""} onValueChange={(v) => setParams({ exp: v || undefined, ...clearedFields, page: undefined })}>
               <SelectTrigger className="w-52" aria-label="Expediente">
                 <SelectValue placeholder="Any expediente" getLabel={(id) => expedientes.find((e) => e.id === id)?.code ?? id} />
               </SelectTrigger>
@@ -251,45 +269,14 @@ export function FindABoxScreen() {
               </SelectContent>
             </Select>
           )}
-          {fields && fields.length > 0 && (
-            <>
-              <Select value={cfCode ?? ""} onValueChange={(v) => setParams({ cf: v || undefined, page: undefined })}>
-                <SelectTrigger className="w-44" aria-label="Client's own field">
-                  <SelectValue placeholder="Client's field…" getLabel={(c) => fields.find((f) => f.code === c)?.name ?? c} />
-                </SelectTrigger>
-                <SelectContent>
-                  {fields.map((f) => (
-                    <SelectItem key={f.code} value={f.code}>
-                      {f.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                value={cfText}
-                disabled={!cfCode}
-                onChange={(e) => {
-                  setCfText(e.target.value)
-                  setParams({ cfv: e.target.value || undefined, page: undefined })
-                }}
-                placeholder="Value"
-                className="max-w-48"
-                aria-label="Field value"
-              />
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="cf-exact"
-                  checked={cfExact}
-                  disabled={!cfCode}
-                  onCheckedChange={(v) => setParams({ cfm: v ? "exact" : undefined, page: undefined })}
-                />
-                <Label htmlFor="cf-exact" className="text-sm">
-                  Exact match
-                </Label>
-              </div>
-            </>
-          )}
         </div>
+
+        {fields && fields.length > 0 && (
+          <div className="flex w-full flex-col gap-2 border-t pt-3">
+            <p className="text-muted-foreground text-xs">Search the client&apos;s own fields (up to four)</p>
+            <FieldSearch fields={fields} params={params} setParams={setParams} />
+          </div>
+        )}
       </div>
 
       <DataTable
