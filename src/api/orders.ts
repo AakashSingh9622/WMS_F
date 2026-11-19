@@ -51,8 +51,9 @@ function toSearchParams(input: OrderSearchInput): URLSearchParams {
   return sp
 }
 
-export function useOrderSearch(input: OrderSearchInput) {
+export function useOrderSearch(input: OrderSearchInput, options: { enabled?: boolean } = {}) {
   return useQuery({
+    enabled: options.enabled ?? true,
     queryKey: queryKeys.orders.search(input),
     queryFn: async (): Promise<{ items: Order[]; total: number }> =>
       parse(orderSearchResponseSchema, await apiClient.get(`/orders?${toSearchParams(input)}`)),

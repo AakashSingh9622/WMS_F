@@ -4,16 +4,18 @@ import Link from "next/link"
 
 import { usePortalSummary } from "@/api/portal"
 import { OrderTypeLabel } from "@/components/order-type-icon"
-import { PORTAL_BOX_STATUS_LABEL } from "@/domain/status"
+import { PORTAL_BOX_STATUS_LABEL, PORTAL_ORDER_STATUS_LABEL } from "@/domain/status"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export function PortalDashboardScreen() {
-  const { data, isLoading } = usePortalSummary()
+  const { data, isLoading, isError } = usePortalSummary()
 
   if (isLoading) return <Skeleton className="h-64 w-full" />
-  if (!data) return null
+  if (isError || !data) {
+    return <p className="text-muted-foreground text-sm">We couldn&apos;t load your dashboard. Please refresh the page.</p>
+  }
 
   const byPlainStatus = Object.entries(data.boxesByStatus).reduce<Record<string, number>>((acc, [status, count]) => {
     const label = PORTAL_BOX_STATUS_LABEL[status as keyof typeof PORTAL_BOX_STATUS_LABEL] ?? status
@@ -75,7 +77,9 @@ export function PortalDashboardScreen() {
                   <p className="font-medium">{order.orderNumber}</p>
                   <OrderTypeLabel type={order.type} />
                 </div>
-                <span className="text-muted-foreground text-sm">{order.status}</span>
+                <span className="text-muted-foreground text-sm">
+                  {PORTAL_ORDER_STATUS_LABEL[order.status] ?? order.status}
+                </span>
               </Link>
             ))}
           </div>
