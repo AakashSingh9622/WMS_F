@@ -18,6 +18,18 @@ export function storeDocusoftCredentials(creds: DocusoftCreds) {
 
 export function clearDocusoftCredentials() {
   localStorage.removeItem(CREDS_STORAGE_KEY)
+  localStorage.removeItem(PROJECT_ID_KEY)
+}
+
+// Same key the DocuSoft web portal uses for the value Json_GetAccessToken returns at login.
+const PROJECT_ID_KEY = "ProjectId"
+
+export function storeProjectId(projectId: string) {
+  localStorage.setItem(PROJECT_ID_KEY, projectId)
+}
+
+export function getStoredProjectId(): string | null {
+  return localStorage.getItem(PROJECT_ID_KEY)
 }
 
 export function getDocusoftCredentials(): DocusoftCreds | null {

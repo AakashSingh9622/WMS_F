@@ -2,7 +2,7 @@ import { createApi } from "@reduxjs/toolkit/query/react"
 import type { BaseQueryFn } from "@reduxjs/toolkit/query"
 
 import { DOCUSOFT_BASE_URL } from "@/store/docusoftConfig"
-import { getDocusoftCredentials } from "@/store/docusoftCreds"
+import { getDocusoftCredentials, getStoredProjectId } from "@/store/docusoftCreds"
 
 // RTK Query slice for DocuSoft's own .asmx API — called DIRECTLY from the browser, not through
 // our backend (see README/CLAUDE.md "Clients/Folders are NOT proxied through this backend").
@@ -145,6 +145,27 @@ export interface DocusoftAddress {
   Postcode?: string
 }
 
+// One document row of Json_GetAllSearchItemsByBoxNumber's Table6 (only the fields we show are typed).
+export interface DocusoftBoxDocument {
+  "Registration No.": number
+  BoxNumber?: string
+  Section?: string | null
+  SubSection?: string | null
+  "Received Date"?: string | null
+  "Item Date"?: string | null
+  Description?: string | null
+  FileSize?: string | null
+  Category?: string | null
+  Type?: string | null
+  DocDirection?: string | null
+  [key: string]: unknown
+}
+
+export interface DocusoftSection {
+  SecID: number
+  Sec: string
+}
+
 // Some DocuSoft methods double-encode (the `d` string holds a JSON *string* of the JSON).
 function parseMaybeString<T>(response: unknown): T {
   return (typeof response === "string" ? JSON.parse(response) : (response ?? {})) as T
@@ -153,6 +174,7 @@ function parseMaybeString<T>(response: unknown): T {
 export const docusoftApi = createApi({
   reducerPath: "docusoftApi",
   baseQuery: docusoftBaseQuery,
+  tagTypes: ["BoxDocs"],
   // Default is 60s after the last subscriber unmounts — i.e. leaving Clients for a minute would
   // drop the cache and re-fetch on return. Folders/clients rarely change, so keep them for the
   // whole session (a day); logout wipes everything (see useAuth.tsx -> resetApiState).
@@ -196,6 +218,28 @@ export const docusoftApi = createApi({
         }
         return lastError ? { error: lastError as DocusoftApiError } : { data: [] }
       },
+    }),
+    // Documents DocuSoft holds against a box number (Json_GetAllSearchItemsByBoxNumber -> Table6). Needs the user's
+    // ProjectId, saved at login from Json_GetAccessToken.
+    getDocumentsByBoxNumber: builder.query<DocusoftBoxDocument[], string>({
+      providesTags: (_result, _error, boxNumber) => [{ type: "BoxDocs", id: boxNumber }], // refreshed after an upload
+      async queryFn(boxNumber, _api, _extra, baseQuery) {
+        const projectId = Number(getStoredProjectId())
+        if (!Number.isFinite(projectId) || projectId <= 0) {
+          return { error: { message: "No DocuSoft project id yet — please sign in again" } }
+        }
+        const res = await baseQuery({
+          method: "Json_GetAllSearchItemsByBoxNumber",
+          params: { ProjectId: projectId, BoxNUmber: boxNumber },
+        })
+        if (res.error) return { error: res.error as DocusoftApiError }
+        return { data: parseMaybeString<{ Table6?: DocusoftBoxDocument[] }>(res.data).Table6 ?? [] }
+      },
+    }),
+    // Sections of a DocuSoft folder (project) — the id and name go into Json_RegisterItem when uploading.
+    getSections: builder.query<DocusoftSection[], number>({
+      query: (projectId) => ({ method: "Json_GetSections", params: { ProjectId: projectId } }),
+      transformResponse: (response: unknown) => parseMaybeString<{ Table?: DocusoftSection[] }>(response).Table ?? [],
     }),
     getClientAddresses: builder.query<DocusoftAddress[], string>({
       query: (clientId) => ({ method: "Json_GetClientAddresses", params: { clientId } }),
@@ -251,4 +295,6 @@ export const {
   useGetClientCardQuery,
   useGetClientAddressesQuery,
   useGetClientContactsQuery,
+  useGetDocumentsByBoxNumberQuery,
+  useGetSectionsQuery,
 } = docusoftApi

@@ -11,6 +11,8 @@ export default async function BoxDetailLayout({ children, params }: LayoutProps<
         items={[
           { href: `/app/boxes/${boxId}`, label: "Overview" },
           { href: `/app/boxes/${boxId}/contents`, label: "Contents" },
+          { href: `/app/boxes/${boxId}/documents`, label: "Document list" },
+          { href: `/app/boxes/${boxId}/upload`, label: "Upload documents" },
           { href: `/app/boxes/${boxId}/history`, label: "History" },
           { href: `/app/boxes/${boxId}/orders`, label: "Orders" },
         ]}

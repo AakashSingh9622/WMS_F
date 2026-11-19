@@ -19,6 +19,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { requestChannelLabel } from "@/domain/request-channel"
 import { loanTypeLabel, loanTypeOf } from "@/domain/loan-type"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { OrderDocuments } from "@/staff/features/orders/order-documents"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 const PRINT_DOCS: Record<string, { label: string; href: (id: string) => string }> = {
@@ -119,7 +121,25 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-3 lg:col-span-2">
+        <Tabs defaultValue="lines" className="lg:col-span-2">
+          <TabsList>
+            <TabsTrigger value="lines">Lines &amp; activity</TabsTrigger>
+            <TabsTrigger value="documents">Document list</TabsTrigger>
+          </TabsList>
+          <TabsContent value="documents" className="pt-4">
+            <OrderDocuments
+              boxes={(lines ?? []).flatMap((l) =>
+                l.boxNumber ? [{ boxNumber: l.boxNumber, boxId: l.boxId ?? undefined, location: <LineLocation line={l} /> }] : [],
+              )}
+              // Same permission as the box's own Upload tab, and only while the order is still open.
+              upload={
+                canRegister && !["completed", "cancelled", "rejected"].includes(order.status)
+                  ? { clientId: order.clientId, orderId: order.id }
+                  : undefined
+              }
+            />
+          </TabsContent>
+          <TabsContent value="lines" className="space-y-3 pt-4">
           <h2 className="text-sm font-semibold">Lines ({lines?.length ?? 0})</h2>
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full text-sm">
@@ -176,7 +196,8 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
               </p>
             )}
           </div>
-        </div>
+          </TabsContent>
+        </Tabs>
 
         <div className="space-y-4">
           <OrderBillingCard order={order} />
