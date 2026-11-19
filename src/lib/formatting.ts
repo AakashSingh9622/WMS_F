@@ -23,7 +23,7 @@ const pad = (n: number) => String(n).padStart(2, "0")
 // Every date the app shows is dd/mm/yyyy. "2026-10-07" (date only) is read as written -- no time-zone shift.
 export function formatDate(value?: string | null): string {
   if (!value) return ""
-  const plain = /^(d{4})-(d{2})-(d{2})$/.exec(value)
+  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
   if (plain) return `${plain[3]}/${plain[2]}/${plain[1]}`
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value

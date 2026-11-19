@@ -5,6 +5,8 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { useBoxLengths, useBoxSizeName, useBoxSizes } from "@/api/settings"
+import { useSites } from "@/api/sites"
+import { useWarehouses } from "@/api/warehouses"
 import { useCustomFields } from "@/api/customFields"
 import { useExpedientes } from "@/api/expedientes"
 import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
@@ -19,6 +21,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { formatLength } from "@/domain/dimensions"
 import type { Box, BoxSize } from "@/api/types"
 import { RetentionCategoryField } from "@/staff/features/boxes/retention-category-field"
+
+/** The "nothing chosen" entry of the site / warehouse lists. */
+const NOT_SET = "__not_set__"
 
 export interface RegisterDraft {
   clientId: string
@@ -128,7 +133,8 @@ function CustomFieldsSection({
         <Field key={f.code}>
           <FieldLabel htmlFor={`cf-${f.code}`}>
             {f.name}
-            {f.required ? "" : " (optional)"}
+            {f.required ? " (required)" : " (optional)"}
+            {f.required && !(values[f.code] ?? "").trim() && <span className="text-destructive"> *</span>}
           </FieldLabel>
           <Input
             id={`cf-${f.code}`}
@@ -230,6 +236,12 @@ function PlaceSection({
   // The client's newest box that is on a shelf: its place can be filled in with one click (Docbox shows it by default).
   const last = useBoxSearch({ clientId: draft.clientId, status: ["stored"], page: 1, pageSize: 1 }, { enabled: !!draft.clientId })
   const lastPath = last.data?.items[0]?.locationPath
+  const { data: warehouses } = useWarehouses()
+  const { data: sites } = useSites()
+  const siteChoices = (sites ?? []).map((s) => ({ value: s.name, label: s.name }))
+  const warehouseChoices = (warehouses ?? [])
+    .filter((w) => !draft.placeSite.trim() || (w.site ?? "").toLowerCase() === draft.placeSite.trim().toLowerCase())
+    .map((w) => ({ value: w.code, label: `${w.code} — ${w.name}` }))
   const fields: { key: "placeSite" | "placeWarehouse" | "placeFloor" | "placeAisle" | "placeModule" | "placeShelf"; label: string; hint?: string }[] = [
     { key: "placeSite", label: "Site (optional)" },
     { key: "placeWarehouse", label: "Warehouse (optional)", hint: "code or name" },
@@ -242,7 +254,7 @@ function PlaceSection({
   const placeAny = fields.some((f) => draft[f.key].trim())
   const missing: Partial<Record<(typeof fields)[number]["key"], string>> = {}
   if (placeAny && !draft.placeModule.trim()) missing.placeModule = "Required: which module?"
-  if (placeAny && !/^d+$/.test(draft.placeShelf.trim())) missing.placeShelf = "Required: a shelf number, e.g. 1"
+  if (placeAny && !/^\d+$/.test(draft.placeShelf.trim())) missing.placeShelf = "Required: a shelf number, e.g. 1"
   return (
     <Section
       title="Put them on a shelf now (optional)"
@@ -269,7 +281,43 @@ function PlaceSection({
           </Button>
         </div>
       )}
-      {fields.map((f) => (
+      {fields.map((f) => {
+        // Site and warehouse are chosen from the lists that exist (a warehouse only from the chosen site).
+        const choices = f.key === "placeSite" ? siteChoices : f.key === "placeWarehouse" ? warehouseChoices : undefined
+        if (choices) {
+          const current = draft[f.key]
+          const options = current && !choices.some((o) => o.value === current) ? [{ value: current, label: current }, ...choices] : choices
+          return (
+            <Field key={f.key}>
+              <FieldLabel htmlFor={`place-${f.key}`}>{f.label}</FieldLabel>
+              <Select
+                value={current || NOT_SET}
+                onValueChange={(v) => {
+                  const next = !v || v === NOT_SET ? "" : v
+                  set(f.key, next)
+                  // a different site: the warehouse chosen before may not belong to it
+                  if (f.key === "placeSite" && draft.placeWarehouse) {
+                    const w = warehouses?.find((x) => x.code === draft.placeWarehouse || x.name === draft.placeWarehouse)
+                    if (w && next && (w.site ?? "").toLowerCase() !== next.toLowerCase()) set("placeWarehouse", "")
+                  }
+                }}
+              >
+                <SelectTrigger id={`place-${f.key}`}>
+                  <SelectValue getLabel={(v) => (v === NOT_SET ? "Not set" : (options.find((o) => o.value === v)?.label ?? v))} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NOT_SET}>Not set</SelectItem>
+                  {options.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )
+        }
+        return (
         <Field key={f.key}>
           <FieldLabel htmlFor={`place-${f.key}`}>
             {f.label}
@@ -285,7 +333,8 @@ function PlaceSection({
           />
           {missing[f.key] && <FieldError errors={[{ message: missing[f.key] }]} />}
         </Field>
-      ))}
+        )
+      })}
     </Section>
   )
 }
@@ -657,7 +706,12 @@ function NewBatch({
   const clientName = clients?.find((c) => c.ClientId === draft.clientId)?.Client
   const expediente = useExpedienteChoice(draft.clientId, draft.expedienteId)
   const { data: shownFields } = useCustomFields(draft.clientId, { expedienteId: expediente.id || undefined })
-  const problem = draftProblem(draft) ?? (expediente.needed ? "Choose the expediente." : null)
+  // The client's own fields marked required must be filled in.
+  const missingOwn = (shownFields ?? []).filter((f) => f.required && !(draft.customFields?.[f.code] ?? "").trim()).map((f) => f.name)
+  const problem =
+    draftProblem(draft) ??
+    (expediente.needed ? "Choose the expediente." : null) ??
+    (missingOwn.length ? `Still needed: ${missingOwn.join(", ")}.` : null)
   // Only the fields of the chosen expediente: a value typed for another one is dropped.
   const shownCodes = new Set((shownFields ?? []).map((f) => f.code))
   const customToSend = Object.fromEntries(Object.entries(draft.customFields ?? {}).filter(([code]) => shownCodes.has(code)))
