@@ -57,6 +57,9 @@ export function RecordRequestsListScreen() {
         actions={
           canOperate && (
             <div className="flex gap-2">
+              <Button variant="outline" nativeButton={false} render={<Link href="/app/record-requests/import" />}>
+                Import requests
+              </Button>
               <Button variant="outline" nativeButton={false} render={<Link href="/app/record-requests/returns" />}>
                 Return records
               </Button>

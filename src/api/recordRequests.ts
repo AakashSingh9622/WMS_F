@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { apiClient, parse } from "@/api/client"
 import { locationPathSchema, type LocationPath } from "@/api/types"
+import type { RequestImportRow } from "@/domain/record-request-import"
 
 /**
  * Docbox "Peticiones": a client asks for several records at once. One request = one client, many records. Not the same as an
@@ -166,5 +167,50 @@ export function useRecordRequestEvents(id: string) {
     queryKey: [ROOT, "events", id],
     enabled: !!id,
     queryFn: async () => parse(z.array(recordRequestEventSchema), await apiClient.get(`/record-requests/${id}/events`)),
+  })
+}
+
+// --- import of record requests (Docbox "IMPORTACION PRESTAMOS") ----------------------------------------------------------
+
+const importResultSchema = z.object({
+  dryRun: z.boolean(),
+  count: z.number(),
+  requests: z.array(
+    z.object({
+      kind: z.string(),
+      loanType: z.string(),
+      contactEmail: z.string(),
+      contactName: z.string().optional(),
+      recordCount: z.number(),
+      /** only after a real run */
+      id: z.string().optional(),
+      requestNumber: z.string().optional(),
+    }),
+  ),
+})
+export type RequestImportResult = z.infer<typeof importResultSchema>
+
+export interface RequestImportInput {
+  clientId: string
+  clientName: string
+  dryRun: boolean
+  /** the client's DocuSoft contacts as this screen read them (nothing is stored); "Requested by" must be one of them */
+  contacts: { email: string; name?: string }[]
+  rows: RequestImportRow[]
+}
+
+/**
+ * All requests are created, or (422, `ApiError.rowErrors`) none are. `dryRun` only checks and says which requests it would make.
+ * Physical rows put their records on loan; digital rows never change the physical status.
+ */
+export function useImportRecordRequests() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: RequestImportInput) => parse(importResultSchema, await apiClient.post("/record-requests/import", input)),
+    onSuccess: (result) => {
+      if (result.dryRun) return
+      void queryClient.invalidateQueries({ queryKey: [ROOT] })
+      void queryClient.invalidateQueries({ queryKey: ["archive-records"] })
+    },
   })
 }

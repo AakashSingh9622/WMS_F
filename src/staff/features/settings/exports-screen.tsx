@@ -107,6 +107,13 @@ export function ExportsScreen() {
       show: true,
     },
     {
+      kind: "record-loans",
+      label: "Records on loan",
+      help: "Every record that is out with a client right now (physical loans only): the client's own fields as columns, who asked, when, and when it was issued. With a client chosen you get that client's field names; the dates filter the request date.",
+      dates: true,
+      show: true,
+    },
+    {
       kind: "toshelve",
       label: "Returns to shelve",
       help: "Boxes that came back and wait at Goods-In, with the shelf they were taken from.",
