@@ -57,6 +57,8 @@ export interface ArchiveRecordSearch {
   status?: RecordStatus[]
   /** an internal code (digits) */
   q?: string
+  /** words found in the record's field values, comments or box number */
+  text?: string
   page?: number
   pageSize?: number
 }
@@ -68,6 +70,7 @@ function queryString(params: ArchiveRecordSearch) {
   if (params.expedienteId) sp.set("expedienteId", params.expedienteId)
   for (const s of params.status ?? []) sp.append("status", s)
   if (params.q) sp.set("q", params.q)
+  if (params.text) sp.set("text", params.text)
   sp.set("page", String(params.page ?? 1))
   sp.set("pageSize", String(params.pageSize ?? 50))
   return sp.toString()

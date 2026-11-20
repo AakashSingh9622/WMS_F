@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import type { ReactNode } from "react"
 import {
+  ClipboardCheck,
   ClipboardList,
   Invoice,
   LayoutDashboard,
@@ -45,6 +46,7 @@ const navIcons: Record<string, AppIcon> = {
   "/app": LayoutDashboard,
   "/app/boxes": Search,
   "/app/orders": ClipboardList,
+  "/app/record-requests": ClipboardCheck,
   "/app/warehouses": MapPin,
   "/app/clients": Users,
   "/app/exceptions": TriangleAlertIcon,

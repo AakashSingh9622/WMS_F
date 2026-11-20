@@ -11,6 +11,7 @@ export const staffNavItems: NavItem[] = [
   { href: "/app", label: "Dashboard" },
   { href: "/app/boxes", label: "Find a box" },
   { href: "/app/orders", label: "Orders" },
+  { href: "/app/record-requests", label: "Record requests", permission: "boxes.operate" },
   { href: "/app/warehouses", label: "Warehouses" },
   { href: "/app/clients", label: "Clients" },
   { href: "/app/exceptions", label: "Exceptions", permission: "orders.approve" },
@@ -69,4 +70,5 @@ export const routeLabels: Record<string, string> = {
   labels: "Labels",
   inventory: "Inventory",
   "import-records": "Import records",
+  "record-requests": "Record requests",
 }
