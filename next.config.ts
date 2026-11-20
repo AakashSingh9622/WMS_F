@@ -39,6 +39,8 @@ const nextConfig: NextConfig = {
       { source: "/api/record-requests/:path*", destination: `${BACKEND_API_URL}/api/record-requests/:path*` },
       { source: "/api/record-returns", destination: `${BACKEND_API_URL}/api/record-returns` },
       { source: "/api/record-returns/:path*", destination: `${BACKEND_API_URL}/api/record-returns/:path*` },
+      { source: "/api/record-purges", destination: `${BACKEND_API_URL}/api/record-purges` },
+      { source: "/api/record-purges/:path*", destination: `${BACKEND_API_URL}/api/record-purges/:path*` },
       { source: "/api/billing/:path*", destination: `${BACKEND_API_URL}/api/billing/:path*` },
       { source: "/api/exports/:path*", destination: `${BACKEND_API_URL}/api/exports/:path*` },
       { source: "/api/notifications", destination: `${BACKEND_API_URL}/api/notifications` },
