@@ -4,9 +4,12 @@ import Link from "next/link"
 import { useState } from "react"
 
 import {
+  RECORD_REQUEST_KINDS,
+  RECORD_REQUEST_KIND_LABELS,
   RECORD_REQUEST_STATUSES,
   RECORD_REQUEST_STATUS_LABELS,
   useRecordRequests,
+  type RecordRequestKind,
   type RecordRequestStatus,
 } from "@/api/recordRequests"
 import { useCan } from "@/auth/useAuth"
@@ -18,7 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { RequestStatusBadge } from "@/staff/features/record-requests/request-status-badge"
+import { RequestKindBadge, RequestStatusBadge } from "@/staff/features/record-requests/request-status-badge"
 import { loanTypeLabel } from "@/domain/loan-type"
 import { useDebounce } from "@/hooks/useDebounce"
 import { formatDateTime } from "@/lib/formatting"
@@ -31,14 +34,19 @@ export function RecordRequestsListScreen() {
   const canOperate = useCan("boxes.operate")
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState<string>(ALL)
+  const [kind, setKind] = useState<string>(ALL)
   const [page, setPage] = useState(1)
   const debounced = useDebounce(search.trim(), 300)
   const { data, isFetching, isError } = useRecordRequests({
     q: debounced || undefined,
     status: status === ALL ? undefined : [status as RecordRequestStatus],
+    kind: kind === ALL ? undefined : (kind as RecordRequestKind),
     page,
     pageSize: PAGE_SIZE,
   })
+  // requests the clients asked for in the portal that nobody has accepted yet
+  const { data: waiting } = useRecordRequests({ status: ["pending"], page: 1, pageSize: 1 })
+  const waitingTotal = waiting?.total ?? 0
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
@@ -90,7 +98,44 @@ export function RecordRequestsListScreen() {
             ))}
           </SelectContent>
         </Select>
+        <Select
+          value={kind}
+          onValueChange={(v) => {
+            setKind(v ?? ALL)
+            setPage(1)
+          }}
+        >
+          <SelectTrigger className="w-44" aria-label="Type">
+            <SelectValue getLabel={(v) => (v === ALL ? "Original and digital" : RECORD_REQUEST_KIND_LABELS[v as RecordRequestKind] ?? v)} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Original and digital</SelectItem>
+            {RECORD_REQUEST_KINDS.map((k) => (
+              <SelectItem key={k} value={k}>
+                {RECORD_REQUEST_KIND_LABELS[k]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
+
+      {waitingTotal > 0 && status !== "pending" && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <span>
+            <strong>{waitingTotal}</strong> request{waitingTotal === 1 ? " is" : "s are"} waiting for you to accept {waitingTotal === 1 ? "it" : "them"} — asked for in the client portal.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setStatus("pending")
+              setPage(1)
+            }}
+          >
+            Show them
+          </Button>
+        </div>
+      )}
 
       {isError ? (
         <p className="text-destructive text-sm">The requests couldn&apos;t be loaded. Try again.</p>
@@ -104,6 +149,7 @@ export function RecordRequestsListScreen() {
                 <TableRow>
                   <TableHead>Request</TableHead>
                   <TableHead>Client</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Contact</TableHead>
                   <TableHead className="text-right">Records</TableHead>
                   <TableHead>Loan type</TableHead>
@@ -114,7 +160,7 @@ export function RecordRequestsListScreen() {
               <TableBody>
                 {data.items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-muted-foreground h-24 text-center">
+                    <TableCell colSpan={8} className="text-muted-foreground h-24 text-center">
                       {debounced || status !== ALL ? "No request matches." : "No requests for records yet."}
                     </TableCell>
                   </TableRow>
@@ -127,6 +173,10 @@ export function RecordRequestsListScreen() {
                         </Link>
                       </TableCell>
                       <TableCell>{r.clientName}</TableCell>
+                      <TableCell>
+                        <RequestKindBadge kind={r.kind} />
+                        {r.source === "portal" && <span className="text-muted-foreground ml-2 text-xs">portal</span>}
+                      </TableCell>
                       <TableCell className="max-w-48 truncate">{r.contactName || r.contactEmail || "—"}</TableCell>
                       <TableCell className="text-right">{r.recordCount}</TableCell>
                       <TableCell>{loanTypeLabel(r.loanType) ?? r.loanType}</TableCell>

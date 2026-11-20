@@ -5,14 +5,22 @@ import { apiClient, parse } from "@/api/client"
 import { locationPathSchema, type LocationPath } from "@/api/types"
 
 /**
- * Docbox "Peticiones": a client asks for several records at once. One request = one client, many records. Creating it
- * puts every record on loan. Not the same as an Order (which moves whole boxes).
+ * Docbox "Peticiones": a client asks for several records at once. One request = one client, many records. Not the same as an
+ * Order (which moves whole boxes).
+ *   original  the paper goes to the client: the records are put on loan when the request is accepted (staff-made requests: at once)
+ *   digital   a scan: the paper never leaves the box, so a digital request is never "on loan" and has nothing to return
+ * A request asked for in the client portal starts as "pending" until staff accept it.
  */
-export const RECORD_REQUEST_STATUSES = ["requested", "delivered", "returned", "cancelled"] as const
+export const RECORD_REQUEST_STATUSES = ["pending", "requested", "delivered", "returned", "cancelled"] as const
 export type RecordRequestStatus = (typeof RECORD_REQUEST_STATUSES)[number]
 
+export const RECORD_REQUEST_KINDS = ["original", "digital"] as const
+export type RecordRequestKind = (typeof RECORD_REQUEST_KINDS)[number]
+export const RECORD_REQUEST_KIND_LABELS: Record<RecordRequestKind, string> = { original: "Original", digital: "Digital copy" }
+
 export const RECORD_REQUEST_STATUS_LABELS: Record<RecordRequestStatus, string> = {
-  requested: "Requested",
+  pending: "Pending acceptance",
+  requested: "Accepted",
   delivered: "Delivered",
   returned: "Returned",
   cancelled: "Cancelled",
@@ -44,6 +52,8 @@ export const recordRequestSchema = z.object({
   clientId: z.string(),
   clientName: z.string(),
   status: z.enum(RECORD_REQUEST_STATUSES),
+  kind: z.enum(RECORD_REQUEST_KINDS),
+  source: z.string(),
   loanType: z.string(),
   requestChannel: z.string().optional(),
   contactName: z.string().optional(),
@@ -66,6 +76,8 @@ const pageSchema = z.object({ items: z.array(recordRequestSchema), total: z.numb
 export interface RecordRequestSearch {
   clientId?: string
   status?: RecordRequestStatus[]
+  kind?: RecordRequestKind
+  source?: "staff" | "portal"
   /** a request number, a client name, or an internal code on the request */
   q?: string
   page?: number
@@ -81,6 +93,8 @@ export function useRecordRequests(params: RecordRequestSearch) {
     queryFn: async () => {
       const sp = new URLSearchParams()
       if (params.clientId) sp.set("clientId", params.clientId)
+      if (params.kind) sp.set("kind", params.kind)
+      if (params.source) sp.set("source", params.source)
       for (const s of params.status ?? []) sp.append("status", s)
       if (params.q) sp.set("q", params.q)
       sp.set("page", String(params.page ?? 1))
@@ -120,15 +134,37 @@ export function useRecordRequest(id: string) {
   })
 }
 
-/** requested -> delivered | cancelled, delivered -> returned. Cancelled / returned put the records back (all or none). */
+/**
+ * pending -> requested (ACCEPT) | cancelled; requested -> delivered | cancelled; delivered -> returned (originals only).
+ * Accepting an original puts its records on loan; a digital request never touches a record. Cancelled / returned originals
+ * put the records back (all or none); cancelling a pending request changes nothing physical.
+ */
 export function useChangeRecordRequestStatus() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, to, note }: { id: string; to: Exclude<RecordRequestStatus, "requested">; note?: string }) =>
+    mutationFn: async ({ id, to, note }: { id: string; to: Exclude<RecordRequestStatus, "pending">; note?: string }) =>
       parse(recordRequestSchema, await apiClient.post(`/record-requests/${id}/status`, { to, note })),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [ROOT] })
       void queryClient.invalidateQueries({ queryKey: ["archive-records"] })
     },
+  })
+}
+
+export const recordRequestEventSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  note: z.string().optional(),
+  actor: actorSchema,
+  at: z.string(),
+})
+export type RecordRequestEvent = z.infer<typeof recordRequestEventSchema>
+
+/** The request's whole history, oldest first: created, accepted, delivered, returned, cancelled — who and when. */
+export function useRecordRequestEvents(id: string) {
+  return useQuery({
+    queryKey: [ROOT, "events", id],
+    enabled: !!id,
+    queryFn: async () => parse(z.array(recordRequestEventSchema), await apiClient.get(`/record-requests/${id}/events`)),
   })
 }
