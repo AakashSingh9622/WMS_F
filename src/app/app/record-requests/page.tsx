@@ -1,7 +1,5 @@
-import { requirePermission } from "@/auth/session"
-import { RequestRecordsScreen } from "@/staff/features/record-requests/request-records-screen"
+import { RecordRequestsListScreen } from "@/staff/features/record-requests/record-requests-list-screen"
 
-export default async function RecordRequestsPage() {
-  await requirePermission("boxes.operate")
-  return <RequestRecordsScreen />
+export default function RecordRequestsPage() {
+  return <RecordRequestsListScreen />
 }

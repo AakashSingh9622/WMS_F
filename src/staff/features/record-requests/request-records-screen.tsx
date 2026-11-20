@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -141,6 +142,14 @@ export function RequestRecordsScreen() {
             <p className="text-muted-foreground text-sm">
               Internal codes: {(done.lines ?? []).map((l) => l.internalCode).join(", ")}. You can request more below.
             </p>
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" nativeButton={false} render={<Link href={`/app/record-requests/${done.id}`} />}>
+                Open {done.requestNumber}
+              </Button>
+              <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/record-requests" />}>
+                All requests
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

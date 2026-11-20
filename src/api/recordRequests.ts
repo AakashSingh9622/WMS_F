@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { z } from "zod"
 
 import { apiClient, parse } from "@/api/client"
+import { locationPathSchema, type LocationPath } from "@/api/types"
 
 /**
  * Docbox "Peticiones": a client asks for several records at once. One request = one client, many records. Creating it
@@ -25,7 +26,17 @@ export const recordRequestLineSchema = z.object({
   internalCode: z.number(),
   boxNumber: z.string(),
   summary: z.string().optional(),
+  returnedAt: z.string().optional(),
+  /** the record's own field values by code, and the place of its box now (for the printouts) */
+  fields: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+  location: z.unknown().optional(), // read with lineLocation()
 })
+
+/** The place of a line's box; an odd old snapshot just shows no place instead of failing the whole page. */
+export function lineLocation(line: { location?: unknown }): LocationPath | undefined {
+  const parsed = locationPathSchema.safeParse(line.location)
+  return parsed.success ? parsed.data : undefined
+}
 
 export const recordRequestSchema = z.object({
   id: z.string(),
@@ -40,6 +51,10 @@ export const recordRequestSchema = z.object({
   notes: z.string().optional(),
   recordCount: z.number(),
   requestedBy: actorSchema,
+  deliveredAt: z.string().optional(),
+  deliveredBy: actorSchema.optional(),
+  closedAt: z.string().optional(),
+  closedBy: actorSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   lines: z.array(recordRequestLineSchema).optional(),
@@ -90,6 +105,27 @@ export function useCreateRecordRequest() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateRecordRequestInput) => parse(recordRequestSchema, await apiClient.post("/record-requests", input)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [ROOT] })
+      void queryClient.invalidateQueries({ queryKey: ["archive-records"] })
+    },
+  })
+}
+
+export function useRecordRequest(id: string) {
+  return useQuery({
+    queryKey: [ROOT, "one", id],
+    enabled: !!id,
+    queryFn: async () => parse(recordRequestSchema, await apiClient.get(`/record-requests/${id}`)),
+  })
+}
+
+/** requested -> delivered | cancelled, delivered -> returned. Cancelled / returned put the records back (all or none). */
+export function useChangeRecordRequestStatus() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, to, note }: { id: string; to: Exclude<RecordRequestStatus, "requested">; note?: string }) =>
+      parse(recordRequestSchema, await apiClient.post(`/record-requests/${id}/status`, { to, note })),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [ROOT] })
       void queryClient.invalidateQueries({ queryKey: ["archive-records"] })
