@@ -7,7 +7,7 @@ import { toast } from "sonner"
 import { RECORD_STATUS_LABELS, useArchiveRecords } from "@/api/archiveRecords"
 import { ApiError } from "@/api/client"
 import { itemLocation, useReturnRecords, type ReturnResult } from "@/api/recordReturns"
-import { ClipboardList } from "@/components/icons"
+import { ClipboardList, Download } from "@/components/icons"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,6 +15,7 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { locationText } from "@/domain/location"
+import { downloadShelvingExcel, shelvingUrlForIds } from "@/lib/shelving-excel"
 
 const MAX_CODES = 200 // the same limit as the server
 
@@ -95,6 +96,19 @@ export function ReturnRecordsScreen() {
     )
   }
 
+  const [excelBusy, setExcelBusy] = useState(false)
+  // exactly the records just returned (ids mode), in the same order as the list above
+  async function downloadExcel() {
+    if (!done) return
+    setExcelBusy(true)
+    try {
+      await downloadShelvingExcel(shelvingUrlForIds(done.items.map((i) => i.id)))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't create the Excel file.")
+    } finally {
+      setExcelBusy(false)
+    }
+  }
   const printHref = done ? `/print/record-shelving-list?ids=${done.items.map((i) => i.id).join(",")}` : ""
 
   return (
@@ -144,9 +158,14 @@ export function ReturnRecordsScreen() {
                 </TableBody>
               </Table>
             </div>
-            <Button nativeButton={false} render={<Link href={printHref} target="_blank" />}>
-              Print shelving list
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button nativeButton={false} render={<Link href={printHref} target="_blank" />}>
+                Print shelving list
+              </Button>
+              <Button variant="outline" disabled={excelBusy} onClick={() => void downloadExcel()}>
+                <Download /> {excelBusy ? "Preparing…" : "Download Excel"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

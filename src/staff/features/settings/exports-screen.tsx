@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { parseCsv } from "@/lib/csv"
 import { downloadXlsx } from "@/lib/spreadsheet"
+import { SHELVING_SHEET, shelvingFileName } from "@/lib/shelving-excel"
 
 const ALL = "__all__"
 
@@ -76,7 +77,9 @@ export function ExportsScreen() {
       if (!res.ok) throw new Error(res.status === 403 ? "You don't have access to this export." : "The export failed. Try again.")
       const rows = parseCsv(await res.text())
       if (rows.length === 0) throw new Error("Nothing to export.")
-      await downloadXlsx(`${kind}-${new Date().toISOString().slice(0, 10)}.xlsx`, rows, label.slice(0, 31))
+      // the shelving sheet has its own approved file and sheet name
+      if (kind === "record-shelving") await downloadXlsx(shelvingFileName(), rows, SHELVING_SHEET)
+      else await downloadXlsx(`${kind}-${new Date().toISOString().slice(0, 10)}.xlsx`, rows, label.slice(0, 31))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't create the Excel file.")
     } finally {
@@ -110,6 +113,13 @@ export function ExportsScreen() {
       kind: "record-loans",
       label: "Records on loan",
       help: "Every record that is out with a client right now (physical loans only): the client's own fields as columns, who asked, when, and when it was issued. With a client chosen you get that client's field names; the dates filter the request date.",
+      dates: true,
+      show: true,
+    },
+    {
+      kind: "record-shelving",
+      label: "Returned records to shelve",
+      help: "Records that came back and are in storage again, with the physical location of their box (warehouse, zone, aisle, shelving unit, row, position) in walking order, so they can be shelved. Choose a client and the From / To dates of the return; unallocated boxes come last.",
       dates: true,
       show: true,
     },
