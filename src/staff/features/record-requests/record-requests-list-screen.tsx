@@ -48,9 +48,14 @@ export function RecordRequestsListScreen() {
         description="Requests for individual records. Open one to mark it delivered, cancel it, take the records back, or print the delivery note and witness slips."
         actions={
           canOperate && (
-            <Button nativeButton={false} render={<Link href="/app/record-requests/new" />}>
-              New request
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" nativeButton={false} render={<Link href="/app/record-requests/returns" />}>
+                Return records
+              </Button>
+              <Button nativeButton={false} render={<Link href="/app/record-requests/new" />}>
+                New request
+              </Button>
+            </div>
           )
         }
       />

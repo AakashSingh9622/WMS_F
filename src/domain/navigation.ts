@@ -71,4 +71,5 @@ export const routeLabels: Record<string, string> = {
   inventory: "Inventory",
   "import-records": "Import records",
   "record-requests": "Record requests",
+  returns: "Return records",
 }
