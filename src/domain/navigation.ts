@@ -68,4 +68,5 @@ export const routeLabels: Record<string, string> = {
   sites: "Sites",
   labels: "Labels",
   inventory: "Inventory",
+  "import-records": "Import records",
 }

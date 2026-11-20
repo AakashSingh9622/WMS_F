@@ -33,6 +33,8 @@ const nextConfig: NextConfig = {
       { source: "/api/invoices/:path*", destination: `${BACKEND_API_URL}/api/invoices/:path*` },
       // Records (retention, legal holds, certificates), pricing & billing, CSV exports, staff notifications.
       { source: "/api/records/:path*", destination: `${BACKEND_API_URL}/api/records/:path*` },
+      { source: "/api/archive-records", destination: `${BACKEND_API_URL}/api/archive-records` },
+      { source: "/api/archive-records/:path*", destination: `${BACKEND_API_URL}/api/archive-records/:path*` },
       { source: "/api/billing/:path*", destination: `${BACKEND_API_URL}/api/billing/:path*` },
       { source: "/api/exports/:path*", destination: `${BACKEND_API_URL}/api/exports/:path*` },
       { source: "/api/notifications", destination: `${BACKEND_API_URL}/api/notifications` },
