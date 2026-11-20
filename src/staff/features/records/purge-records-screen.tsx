@@ -107,7 +107,7 @@ export function PurgeRecordsScreen() {
           } else {
             setDone(result)
             reset()
-            toast.success(`${result.purged ?? 0} purged, ${result.lent ?? 0} lent.`)
+            toast.success(result.pending ? `${result.requestNumber} is waiting for a second person to approve it.` : `${result.lent ?? 0} lent.`)
           }
         },
         onError: (err) => {
@@ -129,23 +129,41 @@ export function PurgeRecordsScreen() {
         Purge records from a file. Each row is one record, found by its internal code, and says what to do with it:{" "}
         <span className="text-foreground font-medium">purge</span> destroys it for good (who authorised it and the date are required, and a
         box under legal hold is refused), <span className="text-foreground font-medium">loan</span> puts it on one record request. Every row
-        is checked first — if one is wrong, nothing is changed.
+        is checked first — if one is wrong, nothing is changed. <span className="text-foreground font-medium">A file with purge rows does not run when you send it:</span>{" "}
+        it waits for a different person to approve it (see the Purge approvals tab).
       </p>
 
       {done && (
         <Card>
           <CardContent className="pt-6">
-            <p className="font-medium">
-              {done.purged ?? 0} record{done.purged === 1 ? "" : "s"} purged, {done.lent ?? 0} lent.
-            </p>
-            {done.requestNumber && (
-              <p className="text-muted-foreground text-sm">
-                The loans are on{" "}
-                <Link href={`/app/record-requests/${done.requestId}`} className="text-primary hover:underline">
-                  {done.requestNumber}
-                </Link>
-                .
-              </p>
+            {done.pending ? (
+              <>
+                <p className="font-medium">
+                  {done.requestNumber} is waiting for approval — {done.purgeCount ?? 0} record{done.purgeCount === 1 ? "" : "s"} to purge{(done.loanCount ?? 0) > 0 ? `, ${done.loanCount} to lend` : ""}.
+                </p>
+                <p className="text-muted-foreground text-sm">
+                  Nothing has been destroyed. A different person with approval rights must approve it in{" "}
+                  <Link href="/app/records/purge-approvals" className="text-primary hover:underline">
+                    Purge approvals
+                  </Link>
+                  . You can cancel it there if the file was wrong.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium">
+                  {done.lent ?? 0} record{done.lent === 1 ? "" : "s"} lent.
+                </p>
+                {done.requestNumber && (
+                  <p className="text-muted-foreground text-sm">
+                    The loans are on{" "}
+                    <Link href={`/app/record-requests/${done.requestId}`} className="text-primary hover:underline">
+                      {done.requestNumber}
+                    </Link>
+                    .
+                  </p>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -325,8 +343,8 @@ export function PurgeRecordsScreen() {
         <Button variant="outline" disabled={!canSend} onClick={() => send(true)}>
           Check file
         </Button>
-        <Button variant={purgeRows > 0 ? "destructive" : "default"} disabled={!canSend || !checked || needsContact} onClick={() => setConfirming(true)}>
-          {purgeRows > 0 ? `Purge ${purgeRows}${loanRows > 0 ? ` and lend ${loanRows}` : ""}` : `Lend ${loanRows}`}
+        <Button disabled={!canSend || !checked || needsContact} onClick={() => setConfirming(true)}>
+          {purgeRows > 0 ? `Send ${purgeRows} purge${purgeRows === 1 ? "" : "s"}${loanRows > 0 ? ` + ${loanRows} loan${loanRows === 1 ? "" : "s"}` : ""} for approval` : loanRows > 0 ? `Lend ${loanRows}` : "Send file"}
         </Button>
         {(rows.length > 0 || rowErrors.length > 0 || fileProblem) && (
           <Button variant="ghost" disabled={run.isPending} onClick={() => { reset(); setDone(null) }}>
@@ -339,14 +357,13 @@ export function PurgeRecordsScreen() {
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
-        title={purgeRows > 0 ? `Destroy ${purgeRows} record${purgeRows === 1 ? "" : "s"} for good?` : `Lend ${loanRows} record${loanRows === 1 ? "" : "s"}?`}
-        destructive={purgeRows > 0}
-        confirmLabel={purgeRows > 0 ? "Yes, purge" : "Lend"}
+        title={purgeRows > 0 ? `Send ${purgeRows} purge${purgeRows === 1 ? "" : "s"} for approval?` : `Lend ${loanRows} record${loanRows === 1 ? "" : "s"}?`}
+        confirmLabel={purgeRows > 0 ? "Send for approval" : "Lend"}
         description={
           purgeRows > 0 ? (
             <span className="block space-y-2">
               <span className="block">
-                A purged record is marked destroyed and can&apos;t be requested, returned or restored. {loanRows > 0 ? `${loanRows} more will be put on a loan request. ` : ""}This cannot be undone.
+                <b>Nothing is destroyed yet.</b> A different person with approval rights must approve this file first; whoever approves it destroys these records for good (it can&apos;t be undone). {loanRows > 0 ? `The ${loanRows} loan row${loanRows === 1 ? "" : "s"} go on a loan request at the same time. ` : ""}The records:
               </span>
               <span className="bg-muted block max-h-40 overflow-auto rounded-md p-2 text-xs">
                 {rows

@@ -20,6 +20,7 @@ export default async function RecordsLayout({ children }: LayoutProps<"/app/reco
           { href: "/app/records/rules", label: "Retention rules" },
           { href: "/app/records/certificates", label: "Certificates" },
           { href: "/app/records/purge-by-file", label: "Purge by file" },
+          { href: "/app/records/purge-approvals", label: "Purge approvals" },
         ]}
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</div>
