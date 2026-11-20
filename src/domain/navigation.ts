@@ -70,6 +70,7 @@ export const routeLabels: Record<string, string> = {
   labels: "Labels",
   inventory: "Inventory",
   "import-records": "Import records",
+  "move-records": "Move records",
   "record-requests": "Record requests",
   returns: "Return records",
   "purge-by-file": "Purge by file",

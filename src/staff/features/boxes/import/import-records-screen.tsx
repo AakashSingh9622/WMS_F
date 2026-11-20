@@ -130,9 +130,14 @@ export function ImportRecordsScreen() {
         title="Import records from a file"
         description="Records are the individual files inside a box, each with its own internal code. Make the Excel template for a client and file here, fill it in, check it, then import it. Every row is checked first — if one is wrong, nothing is imported."
         actions={
-          <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/app/boxes/import" />}>
-            Import boxes instead
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/app/boxes/move-records" />}>
+              Move records to another box
+            </Button>
+            <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/app/boxes/import" />}>
+              Import boxes instead
+            </Button>
+          </div>
         }
       />
 
