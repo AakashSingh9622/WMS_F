@@ -322,7 +322,7 @@ export function ReportsScreen() {
           <div>
             <CardTitle className="text-base">Archive by client, box size and status</CardTitle>
             <CardDescription>
-              How many boxes each client has, with the containers (NCE) and recorded contents (files inside boxes). Uses the client, file, site, warehouse, state and dates chosen above.
+              How many boxes each client has, with the containers (NCE) and the number of records (archive records, destroyed ones left out). Uses the client, file, site, warehouse, state and dates chosen above.
             </CardDescription>
             <div className="mt-2">
               <SplitSwitch id="rp-archive-split" checked={archiveByFile} onChange={setArchiveByFile} />
@@ -334,7 +334,7 @@ export function ReportsScreen() {
             disabled={archiveRows.length === 0}
             onClick={() =>
               downloadCsv("archive-report.csv", [
-                ["Client", "Client id", ...(archiveByFile ? ["File"] : []), "Box size", "Status", "Boxes", "Containers (NCE)", "Recorded contents"],
+                ["Client", "Client id", ...(archiveByFile ? ["File"] : []), "Box size", "Status", "Boxes", "Containers (NCE)", "Records"],
                 ...archiveRows.map((r) => [
                   r.clientName,
                   r.clientId,
@@ -366,7 +366,7 @@ export function ReportsScreen() {
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Boxes</TableHead>
                   <TableHead className="text-right">Containers (NCE)</TableHead>
-                  <TableHead className="text-right">Recorded contents</TableHead>
+                  <TableHead className="text-right">Records</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -392,7 +392,7 @@ export function ReportsScreen() {
             </Table>
           )}
           <p className="text-muted-foreground mt-2 text-xs">
-            Containers and contents are counted per client (or per client and file when split) over the same boxes, so a client with several sizes shows the same figure on each of its rows.
+            Containers and records are counted per client (or per client and file when split) over the same boxes, so a client with several sizes shows the same figure on each of its rows.
           </p>
         </CardContent>
       </Card>
