@@ -17,6 +17,15 @@ import { SHELVING_SHEET, shelvingFileName } from "@/lib/shelving-excel"
 
 const ALL = "__all__"
 
+/** Largest Records Excel we build in the browser (a bigger one is refused, never cut short — CSV has no limit). */
+const RECORDS_EXCEL_MAX = 20000
+const RECORD_STATUS_LABEL: Record<string, string> = {
+  archived: "Archived",
+  on_loan: "On loan",
+  in_transit: "In transit",
+  destroyed: "Destroyed",
+}
+
 /** CSV downloads (spec §4.6 / §8): Excel-ready, streamed straight from the API so even big ranges work. */
 export function ExportsScreen() {
   const canAudit = useCan("audit.read")
@@ -40,6 +49,7 @@ export function ExportsScreen() {
   const [palletTo, setPalletTo] = useState("")
   const [containerFrom, setContainerFrom] = useState("")
   const [containerTo, setContainerTo] = useState("")
+  const [recordStatus, setRecordStatus] = useState(ALL)
   const { data: racks } = useWarehouseRacks(warehouseId === ALL ? "" : warehouseId)
   const clientName = (id: string) =>
     id === ALL ? "All clients" : (clients?.find((c) => c.ClientId === id)?.Client ?? id)
@@ -49,7 +59,8 @@ export function ExportsScreen() {
     if (clientId !== ALL) sp.set("clientId", clientId)
     if (withDates && from) sp.set("from", from)
     if (withDates && to) sp.set("to", to)
-    if (kind === "inventory") {
+    if (kind === "records" && recordStatus !== ALL) sp.set("status", recordStatus)
+    if (kind === "inventory" || kind === "records") {
       if (warehouseId !== ALL) sp.set("warehouseId", warehouseId)
       if (warehouseId !== ALL && rackId !== ALL) sp.set("rackId", rackId)
       if (warehouseId !== ALL && rackId !== ALL && /^\d+$/.test(row)) sp.set("row", row)
@@ -73,10 +84,23 @@ export function ExportsScreen() {
   async function downloadExcel(kind: string, label: string, url: string) {
     setBusy(kind)
     try {
+      // Records: ask how many rows there are first, so a huge file is refused up front and a short one is never saved
+      let expected: number | null = null
+      if (kind === "records") {
+        const c = await fetch(url.replace("/records.csv", "/records.count"), { credentials: "same-origin" })
+        if (!c.ok) throw new Error(c.status === 400 ? "Check the filters — one of them is not valid." : c.status === 403 ? "You don't have access to this export." : "The export failed. Try again.")
+        expected = Number(((await c.json()) as { count?: number }).count)
+        if (!Number.isFinite(expected)) throw new Error("The export failed. Try again.")
+        if (expected === 0) throw new Error("No records match these filters, so there is nothing to export.")
+        if (expected > RECORDS_EXCEL_MAX)
+          throw new Error(`${expected.toLocaleString()} records match — too many for an Excel file (limit ${RECORDS_EXCEL_MAX.toLocaleString()}). Use the CSV button, or narrow the filters.`)
+      }
       const res = await fetch(url, { credentials: "same-origin" })
-      if (!res.ok) throw new Error(res.status === 403 ? "You don't have access to this export." : "The export failed. Try again.")
+      if (!res.ok) throw new Error(res.status === 400 ? "Check the filters — one of them is not valid." : res.status === 403 ? "You don't have access to this export." : "The export failed. Try again.")
       const rows = parseCsv(await res.text())
       if (rows.length === 0) throw new Error("Nothing to export.")
+      if (expected !== null && rows.length - 1 !== expected)
+        throw new Error(`The file has ${rows.length - 1} records but ${expected} were expected (the data changed while it was being prepared). Nothing was saved — try again.`)
       // the shelving sheet has its own approved file and sheet name
       if (kind === "record-shelving") await downloadXlsx(shelvingFileName(), rows, SHELVING_SHEET)
       else await downloadXlsx(`${kind}-${new Date().toISOString().slice(0, 10)}.xlsx`, rows, label.slice(0, 31))
@@ -92,6 +116,13 @@ export function ExportsScreen() {
       kind: "inventory",
       label: "Inventory",
       help: "Every box with its status and location (today).",
+      dates: false,
+      show: true,
+    },
+    {
+      kind: "records",
+      label: "Records inventory",
+      help: "One row per record: the client's own fields, internal code, status, and the full location of its box (block, aisle, shelving unit, row, pallet, site, warehouse, box). The same columns work for purge and move files. Use the filters below; destroyed records only when you pick that status.",
       dates: false,
       show: true,
     },
@@ -288,8 +319,26 @@ export function ExportsScreen() {
           <Input id="ex-con-to" inputMode="numeric" value={containerTo} onChange={(e) => setContainerTo(e.target.value.replace(/\D/g, ""))} />
         </Field>
       </div>
+      <div className="grid gap-4 sm:grid-cols-4">
+        <Field>
+          <FieldLabel htmlFor="ex-rec-status">Records inventory: status</FieldLabel>
+          <Select value={recordStatus} onValueChange={(v) => setRecordStatus(v ?? ALL)}>
+            <SelectTrigger id="ex-rec-status">
+              <SelectValue getLabel={(v) => (v === ALL ? "All except destroyed" : (RECORD_STATUS_LABEL[v] ?? v))} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All except destroyed</SelectItem>
+              {Object.entries(RECORD_STATUS_LABEL).map(([v, l]) => (
+                <SelectItem key={v} value={v}>
+                  {l}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
       <FieldDescription>
-        These only narrow the Inventory download. A box number like 125 means BX00000125. Pallet and container ranges use whole numbers; boxes whose
+        These narrow the Inventory and Records inventory downloads (Expediente is the file code). A box number like 125 means BX00000125. Pallet and container ranges use whole numbers; boxes whose
         pallet or container isn&apos;t a number are left out when a range is set.
       </FieldDescription>
 
