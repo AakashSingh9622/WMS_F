@@ -46,6 +46,33 @@ export function useReturnRecords() {
   })
 }
 
+const importResultSchema = z.object({
+  dryRun: z.boolean(),
+  count: z.number(),
+  closedRequests: z.array(z.string()).optional(),
+  items: z.array(shelvingItemSchema).optional(),
+})
+export type ReturnImportResult = z.infer<typeof importResultSchema>
+
+/** Docbox "Importar Devoluciones": the same return, from a file. All rows or (422, `ApiError.rowErrors` with the Excel row of each bad one) none; `dryRun` only checks. */
+export function useImportReturns() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      clientId: string
+      clientName: string
+      dryRun: boolean
+      note?: string
+      rows: { row: number; internalCode: string; file: string; customer: string }[]
+    }) => parse(importResultSchema, await apiClient.post("/record-returns/import", input)),
+    onSuccess: (result) => {
+      if (result.dryRun) return
+      void queryClient.invalidateQueries({ queryKey: ["record-requests"] })
+      void queryClient.invalidateQueries({ queryKey: ["archive-records"] })
+    },
+  })
+}
+
 /** The shelving list again (for the print page): the same records, in shelf order. */
 export function useShelvingList(ids: string[]) {
   return useQuery({

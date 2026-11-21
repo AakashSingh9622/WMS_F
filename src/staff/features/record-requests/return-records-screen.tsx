@@ -118,9 +118,14 @@ export function ReturnRecordsScreen() {
         title="Return records"
         description="Records that came back from a client. Type or scan each internal code, then return them all together. Every code is checked first — if one is wrong, nothing is returned."
         actions={
-          <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/app/record-requests" />}>
-            All requests
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/app/record-requests/import-returns" />}>
+              Import returns
+            </Button>
+            <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/app/record-requests" />}>
+              All requests
+            </Button>
+          </div>
         }
       />
 
