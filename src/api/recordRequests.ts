@@ -152,6 +152,36 @@ export function useChangeRecordRequestStatus() {
   })
 }
 
+/** Only a pending or accepted request can be edited; the rest are read-only. */
+export const isRecordRequestEditable = (r: { status: RecordRequestStatus }) => r.status === "pending" || r.status === "requested"
+
+export interface EditRecordRequestInput {
+  contactName?: string
+  contactEmail?: string
+  loanType?: string
+  requestChannel?: string
+  notes?: string
+  addRecordIds?: string[]
+  removeRecordIds?: string[]
+  /** why — added to the request's and the records' history */
+  note?: string
+}
+
+/**
+ * Edits an open request, all or nothing: header fields and/or records added / removed. The client and the kind never change; a
+ * portal request keeps its contact. An accepted original request puts added records on loan and gives removed ones back.
+ */
+export function useEditRecordRequest(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: EditRecordRequestInput) => parse(recordRequestSchema, await apiClient.patch(`/record-requests/${id}`, input)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [ROOT] })
+      void queryClient.invalidateQueries({ queryKey: ["archive-records"] })
+    },
+  })
+}
+
 export const recordRequestEventSchema = z.object({
   id: z.string(),
   type: z.string(),

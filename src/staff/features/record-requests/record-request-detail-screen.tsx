@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { useCustomFields } from "@/api/customFields"
 import {
+  isRecordRequestEditable,
   lineLocation,
   useChangeRecordRequestStatus,
   useRecordRequest,
@@ -65,7 +66,16 @@ function stepsFor(r: RecordRequest): Step[] {
   }
 }
 
-const EVENT_LABEL: Record<string, string> = { created: "Created", accepted: "Accepted", delivered: "Delivered", returned: "Returned", cancelled: "Cancelled" }
+const EVENT_LABEL: Record<string, string> = {
+  created: "Created",
+  accepted: "Accepted",
+  delivered: "Delivered",
+  returned: "Returned",
+  cancelled: "Cancelled",
+  edited: "Details edited",
+  records_added: "Records added",
+  records_removed: "Records removed",
+}
 
 /** One request for records: who asked, the records, and the buttons that move it on or print its papers. */
 export function RecordRequestDetailScreen({ requestId }: { requestId: string }) {
@@ -117,6 +127,11 @@ export function RecordRequestDetailScreen({ requestId }: { requestId: string }) 
                 Witness slips
               </Button>
             </>
+          )}
+          {canOperate && isRecordRequestEditable(request) && (
+            <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/app/record-requests/${request.id}/edit`} />}>
+              Edit
+            </Button>
           )}
           {canOperate &&
             steps.map((a) => (
