@@ -15,6 +15,8 @@ import {
   type RecordRequestStatus,
 } from "@/api/recordRequests"
 import { useCan } from "@/auth/useAuth"
+import { canCorrect } from "@/domain/record-request-correction"
+import { CorrectRequestDialog } from "@/staff/features/record-requests/correct-request-dialog"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -75,6 +77,8 @@ const EVENT_LABEL: Record<string, string> = {
   edited: "Details edited",
   records_added: "Records added",
   records_removed: "Records removed",
+  status_corrected: "Status corrected",
+  kind_changed: "Kind changed",
 }
 
 /** One request for records: who asked, the records, and the buttons that move it on or print its papers. */
@@ -86,6 +90,7 @@ export function RecordRequestDetailScreen({ requestId }: { requestId: string }) 
   const canOperate = useCan("boxes.operate")
   const [pending, setPending] = useState<Action | null>(null)
   const [note, setNote] = useState("")
+  const [correcting, setCorrecting] = useState(false)
 
   if (isLoading) return <Skeleton className="h-64 w-full max-w-5xl" />
   if (isError || !request) return <p className="text-muted-foreground text-sm">This request was not found.</p>
@@ -131,6 +136,11 @@ export function RecordRequestDetailScreen({ requestId }: { requestId: string }) 
           {canOperate && isRecordRequestEditable(request) && (
             <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/app/record-requests/${request.id}/edit`} />}>
               Edit
+            </Button>
+          )}
+          {canOperate && canCorrect(request) && (
+            <Button variant="outline" size="sm" onClick={() => setCorrecting(true)}>
+              Correct
             </Button>
           )}
           {canOperate &&
@@ -229,6 +239,8 @@ export function RecordRequestDetailScreen({ requestId }: { requestId: string }) 
           )}
         </CardContent>
       </Card>
+
+      <CorrectRequestDialog request={request} open={correcting} onOpenChange={setCorrecting} />
 
       <ConfirmDialog
         open={!!pending}

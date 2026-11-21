@@ -182,6 +182,29 @@ export function useEditRecordRequest(id: string) {
   })
 }
 
+export interface CorrectRecordRequestInput {
+  /** exactly one of these two: the new status, or the new kind */
+  to?: "requested" | "delivered" | "returned" | "cancelled"
+  kind?: RecordRequestKind
+  /** required: written to the request's and every record's history */
+  reason: string
+}
+
+/**
+ * Docbox "Modificar Peticiones": fixes a request after the fact (cancelled, a digital copy instead, a loan or return done by mistake).
+ * The records' physical status follows the request; reopening needs them archived and free (else 409 and nothing changes).
+ */
+export function useCorrectRecordRequest(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: CorrectRecordRequestInput) => parse(recordRequestSchema, await apiClient.post(`/record-requests/${id}/correct`, input)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [ROOT] })
+      void queryClient.invalidateQueries({ queryKey: ["archive-records"] })
+    },
+  })
+}
+
 export const recordRequestEventSchema = z.object({
   id: z.string(),
   type: z.string(),
