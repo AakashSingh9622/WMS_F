@@ -7,6 +7,8 @@ import { toast } from "sonner"
 
 import { useAuth } from "@/auth/useAuth"
 import { getOrderActions } from "@/domain/orders"
+import { LOAN_TYPES, loanTypeLabel, loanTypeOf, type LoanType } from "@/domain/loan-type"
+import { REQUEST_CHANNELS, requestChannelLabel, type RequestChannel } from "@/domain/request-channel"
 import {
   useApproveDestruction,
   useApproveOrder,
@@ -14,9 +16,14 @@ import {
   useAuthoriseDigitization,
   useCancelOrder,
   useCompleteOrder,
+  useDigitizeOrder,
   useDispatchOrder,
+  useEditOrderDetails,
+  type EditOrderDetailsInput,
   useHoldOrder,
+  useOrderLines,
   useRecordDelivery,
+  useReopenOrder,
   useResumeOrder,
   useRejectOrder,
   useScheduleOrder,
@@ -59,7 +66,7 @@ function TextFieldAction({
 
   async function submit() {
     try {
-      await onSubmit(value)
+      await onSubmit(value.trim())
       setOpen(false)
       setValue("")
     } catch (err) {
@@ -79,11 +86,25 @@ function TextFieldAction({
           {multiline ? (
             <Textarea id="action-field" value={value} onChange={(e) => setValue(e.target.value)} />
           ) : (
-            <Input id="action-field" value={value} onChange={(e) => setValue(e.target.value)} />
+            <Input
+              id="action-field"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (optional || value.trim()) && !isPending) void submit()
+              }}
+            />
           )}
         </Field>
         <DialogFooter>
-          <Button onClick={submit} disabled={(!optional && !value) || isPending}>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Back
+          </Button>
+          <Button
+            variant={buttonVariant === "destructive" ? "destructive" : "default"}
+            onClick={submit}
+            disabled={(!optional && !value.trim()) || isPending}
+          >
             {isPending ? "Saving…" : label}
           </Button>
         </DialogFooter>
@@ -156,6 +177,82 @@ function FieldsAction({
   )
 }
 
+/**
+ * Digitise order: staff scan each box's documents (with the scanner of their choice), tick the box here once it is
+ * done, and when every box is ticked the order is completed and the boxes are marked as digitised.
+ */
+function DigitiseDialog({ order }: { order: Order }) {
+  const [open, setOpen] = useState(false)
+  const [done, setDone] = useState<Set<string>>(new Set())
+  const { data: lines = [], isLoading } = useOrderLines(order.id)
+  const start = useStartOrder()
+  const digitize = useDigitizeOrder()
+  const open_ = lines.filter((l) => l.status !== "removed" && l.status !== "missing")
+  const allDone = open_.length > 0 && open_.every((l) => done.has(l.id))
+  const busy = start.isPending || digitize.isPending
+
+  async function finish() {
+    try {
+      if (order.status === "scheduled") await start.mutateAsync({ orderId: order.id })
+      await digitize.mutateAsync({ orderId: order.id })
+      toast.success(`${open_.length} box${open_.length === 1 ? "" : "es"} digitised`)
+      setOpen(false)
+    } catch (err) {
+      onError(err)
+    }
+  }
+
+  const toggle = (id: string) =>
+    setDone((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" className="gap-1.5" />}>
+        <DocumentScanner className="size-4" />
+        Digitise boxes
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Digitise {order.orderNumber}</DialogTitle>
+          <p className="text-muted-foreground text-sm">
+            Scan each box&apos;s documents, then tick the box. When all are ticked, finish to complete the order.
+            {order.digitization?.note ? ` Client note: ${order.digitization.note}` : ""}
+          </p>
+        </DialogHeader>
+        <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border text-sm">
+          {isLoading && <li className="text-muted-foreground p-3">Loading boxes…</li>}
+          {open_.map((line) => (
+            <li key={line.id}>
+              <label className="flex cursor-pointer items-center gap-3 px-3 py-2">
+                <input type="checkbox" checked={done.has(line.id)} onChange={() => toggle(line.id)} />
+                <span className={done.has(line.id) ? "text-muted-foreground line-through" : "font-medium"}>
+                  {line.boxNumber}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <p className="text-muted-foreground text-xs">
+          {open_.filter((l) => done.has(l.id)).length} of {open_.length} scanned
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Close
+          </Button>
+          <Button disabled={!allDone || busy} onClick={finish}>
+            {busy ? "Saving…" : "Finish digitising"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function OrderActions({ order }: { order: Order }) {
   const { user } = useAuth()
   const actions = getOrderActions(order, user?.roles ?? [])
@@ -173,6 +270,7 @@ export function OrderActions({ order }: { order: Order }) {
   const approveDestruction = useApproveDestruction()
   const recordDelivery = useRecordDelivery()
   const resume = useResumeOrder()
+  const reopen = useReopenOrder()
 
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [scheduledFor, setScheduledFor] = useState(todayISO)
@@ -348,13 +446,7 @@ export function OrderActions({ order }: { order: Order }) {
         </Dialog>
       )}
 
-      {actions.canFixBoxScan && (
-        // The scan app is not connected yet: for now this only tells the user. Open the app from here later.
-        <Button size="sm" className="gap-1.5" onClick={() => toast.info("The fix-box-scan app is not connected yet.")}>
-          <DocumentScanner className="size-4" />
-          fix-box-scan
-        </Button>
-      )}
+      {actions.canFixBoxScan && <DigitiseDialog order={order} />}
 
       {actions.canDispatch && (
         <FieldsAction
@@ -454,6 +546,17 @@ export function OrderActions({ order }: { order: Order }) {
         </Button>
       )}
 
+      {actions.canEditDetails && <EditRequestDialog order={order} />}
+
+      {actions.canReopen && (
+        <TextFieldAction
+          label="Reopen order"
+          fieldLabel="Why is it being reopened?"
+          isPending={reopen.isPending}
+          onSubmit={(reason) => reopen.mutateAsync({ orderId: order.id, input: { reason } })}
+        />
+      )}
+
       {actions.canCancel && (
         <TextFieldAction
           label="Cancel order"
@@ -464,5 +567,98 @@ export function OrderActions({ order }: { order: Order }) {
         />
       )}
     </div>
+  )
+}
+
+/** Docbox "Modificar Peticiones": fix the loan type, how the client asked, or who asked, after the request was logged. */
+function EditRequestDialog({ order }: { order: Order }) {
+  const edit = useEditOrderDetails()
+  const isLoan = order.type === "dispatch" || order.type === "digitize"
+  const [open, setOpen] = useState(false)
+  const [loanType, setLoanType] = useState<LoanType>(loanTypeOf(order) ?? "normal")
+  const [channel, setChannel] = useState<string>(order.requestChannel ?? "none")
+  const [email, setEmail] = useState(order.contactEmail ?? "")
+  const [remarks, setRemarks] = useState("")
+
+  const submit = () => {
+    const input: EditOrderDetailsInput = {}
+    if (isLoan && loanType !== loanTypeOf(order)) input.loanType = loanType
+    if (channel !== (order.requestChannel ?? "none")) input.requestChannel = channel === "none" ? "" : (channel as RequestChannel)
+    if (email.trim() && email.trim().toLowerCase() !== (order.contactEmail ?? "")) input.contactEmail = email.trim()
+    if (remarks.trim()) input.remarks = remarks.trim()
+    if (Object.keys(input).length === 0) {
+      toast.info("Nothing was changed.")
+      return
+    }
+    edit.mutate(
+      { orderId: order.id, input },
+      {
+        onSuccess: () => {
+          toast.success("Request updated.")
+          setOpen(false)
+          setRemarks("")
+        },
+        onError,
+      },
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant="outline" />}>Edit request</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit request {order.orderNumber}</DialogTitle>
+        </DialogHeader>
+        <FieldGroup>
+          {isLoan && (
+            <Field>
+              <FieldLabel htmlFor="edit-loan-type">Loan type</FieldLabel>
+              <Select value={loanType} onValueChange={(v) => setLoanType((v as LoanType) ?? "normal")}>
+                <SelectTrigger id="edit-loan-type">
+                  <SelectValue getLabel={(v) => loanTypeLabel(v) ?? v} />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOAN_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+          <Field>
+            <FieldLabel htmlFor="edit-channel">How the client asked</FieldLabel>
+            <Select value={channel} onValueChange={(v) => setChannel(v ?? "none")}>
+              <SelectTrigger id="edit-channel">
+                <SelectValue getLabel={(v) => (v === "none" ? "Not recorded" : (requestChannelLabel(v) ?? v))} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Not recorded</SelectItem>
+                {REQUEST_CHANNELS.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="edit-email">Requested by (contact email)</FieldLabel>
+            <Input id="edit-email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="edit-remarks">Remark (optional, added to the order notes)</FieldLabel>
+            <Textarea id="edit-remarks" value={remarks} maxLength={500} onChange={(e) => setRemarks(e.target.value)} />
+          </Field>
+        </FieldGroup>
+        <DialogFooter>
+          <Button disabled={edit.isPending} onClick={submit}>
+            {edit.isPending ? "Saving…" : "Save changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

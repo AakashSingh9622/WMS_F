@@ -18,16 +18,34 @@ export function AuditTimeline({
     return <p className="text-muted-foreground text-sm">No activity yet.</p>
   }
 
+  // An action on several boxes at once (one order, three boxes) writes one event per box with identical wording.
+  // Fold neighbours that read the same and happened within a minute into one row: "… × 3".
+  const rows: { event: AuditEvent; described: ReturnType<typeof describeAuditEvent>; count: number }[] = []
+  for (const event of events) {
+    const described = describeAuditEvent(event, audience)
+    const last = rows[rows.length - 1]
+    if (
+      last &&
+      last.described.text === described.text &&
+      last.event.orderId === event.orderId &&
+      Math.abs(new Date(last.event.at).getTime() - new Date(event.at).getTime()) < 60_000
+    ) {
+      last.count += 1
+    } else {
+      rows.push({ event, described, count: 1 })
+    }
+  }
+
   return (
     <ol className="space-y-3">
-      {events.map((event) => {
-        const described = describeAuditEvent(event, audience)
+      {rows.map(({ event, described, count }) => {
         return (
           <li key={event.id} className="border-border flex gap-3 border-l-2 pl-3">
             <div className="flex-1 space-y-0.5">
               <p className="text-sm">
                 <span className="font-medium">{described.verb}</span>
                 {described.text.slice(described.verb.length)}
+                {count > 1 && <span className="text-muted-foreground"> × {count}</span>}
                 {audience === "staff" && event.orderId && event.orderNumber && orderHref && (
                   <>
                     {" "}

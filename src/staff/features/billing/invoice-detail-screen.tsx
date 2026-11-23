@@ -3,6 +3,9 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+
+import { ConfirmDialog } from "@/components/confirm-dialog"
+import { PaginationFooter } from "@/components/data-table"
 import { toast } from "sonner"
 
 import { ApiError } from "@/api/client"
@@ -14,7 +17,7 @@ import {
   type Invoice as InvoiceData,
 } from "@/api/invoices"
 import { SAGE_NOT_ACTIVE, SAGE_TAX_RATES, SageError } from "@/api/sage"
-import { useStripePayments } from "@/api/stripe"
+import { stripeCreatedISO, useStripePayments } from "@/api/stripe"
 import { useCan } from "@/auth/useAuth"
 import {
   projectIdOf,
@@ -191,7 +194,17 @@ function StripePaymentsCard({ invoice }: { invoice: InvoiceData }) {
   )
   const customerId = String(card?.Table1?.[0]?.StripeCustomerId ?? "").trim() || undefined
   const payments = useStripePayments(customerId)
+  const [page, setPage] = useState(1)
   if (!customerId) return null
+  const PAGE_SIZE = 10
+  const all = payments.data ?? []
+  const shown = all.slice((Math.min(page, Math.max(1, Math.ceil(all.length / PAGE_SIZE))) - 1) * PAGE_SIZE).slice(0, PAGE_SIZE)
+  // Stripe amounts are in pence; the proxy may send them as text or only as amount_received.
+  const amountText = (p: (typeof all)[number]) => {
+    const raw = p.amount ?? p.amount_received
+    const n = typeof raw === "string" ? Number(raw) : raw
+    return typeof n === "number" && Number.isFinite(n) ? `${(n / 100).toFixed(2)} ${(p.currency ?? "").toUpperCase()}` : "—"
+  }
 
   return (
     <Card>
@@ -216,20 +229,23 @@ function StripePaymentsCard({ invoice }: { invoice: InvoiceData }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {payments.data.map((p) => (
+              {shown.map((p) => (
                 <TableRow key={p.id}>
-                  <TableCell>{p.created ? formatDate(new Date(p.created * 1000).toISOString()) : "—"}</TableCell>
+                  <TableCell>{stripeCreatedISO(p.created) ? formatDate(stripeCreatedISO(p.created) as string) : "—"}</TableCell>
                   <TableCell>{p.description ?? p.id}</TableCell>
                   <TableCell>{p.status ?? "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {typeof p.amount === "number"
-                      ? `${(p.amount / 100).toFixed(2)} ${(p.currency ?? "").toUpperCase()}`
-                      : "—"}
+                    {amountText(p)}
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+        )}
+        {all.length > PAGE_SIZE && (
+          <div className="mt-3">
+            <PaginationFooter page={page} pageSize={PAGE_SIZE} total={all.length} onPageChange={setPage} />
+          </div>
         )}
         <p className="text-muted-foreground mt-2 text-xs">
           Read from Stripe through DocuSoft (the client&apos;s Stripe customer on its DocuSoft card). Matching payments
@@ -246,6 +262,7 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
   const { data: invoice, isLoading } = useInvoice(invoiceId)
   const remove = useDeleteInvoice()
   const [editing, setEditing] = useState(false)
+  const [askDelete, setAskDelete] = useState(false)
 
   if (isLoading || !invoice) return <Skeleton className="h-96 w-full max-w-4xl" />
   if (editing) {
@@ -261,7 +278,6 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
   const isDraft = invoice.status === "draft"
 
   async function deleteDraft() {
-    if (!window.confirm(`Delete draft ${invoice?.invoiceNumber}?`)) return
     try {
       await remove.mutateAsync(invoiceId)
       toast.success("Draft deleted")
@@ -296,9 +312,18 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
               <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
                 Edit
               </Button>
-              <Button variant="outline" size="sm" disabled={remove.isPending} onClick={deleteDraft}>
+              <Button variant="outline" size="sm" disabled={remove.isPending} onClick={() => setAskDelete(true)}>
                 Delete
               </Button>
+              <ConfirmDialog
+                open={askDelete}
+                onOpenChange={setAskDelete}
+                title={`Delete draft ${invoice.invoiceNumber}?`}
+                description="The draft invoice is removed. This can't be undone."
+                confirmLabel="Delete draft"
+                destructive
+                onConfirm={deleteDraft}
+              />
             </div>
           ) : undefined
         }

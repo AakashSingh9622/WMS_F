@@ -44,13 +44,13 @@ function ZoneSelect({
   return (
     <Select value={value} onValueChange={(v) => onChange(v ?? NO_ZONE)}>
       <SelectTrigger className="w-36" aria-label={label}>
-        <SelectValue getLabel={(id) => (id === NO_ZONE ? "No zone" : `Zone ${zones.find((z) => z.id === id)?.code}`)} />
+        <SelectValue getLabel={(id) => (id === NO_ZONE ? "No floor" : `Floor ${zones.find((z) => z.id === id)?.code}`)} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={NO_ZONE}>No zone</SelectItem>
+        <SelectItem value={NO_ZONE}>No floor</SelectItem>
         {zones.map((z) => (
           <SelectItem key={z.id} value={z.id}>
-            Zone {z.code}
+            Floor {z.code}
           </SelectItem>
         ))}
       </SelectContent>
@@ -68,7 +68,7 @@ function LevelRow({
   busy,
 }: {
   item: Zone | Aisle
-  what: "Zone" | "Aisle"
+  what: "Floor" | "Aisle"
   extra?: React.ReactNode
   onSave: (input: { code: string; name: string }) => Promise<unknown>
   onDelete: () => void
@@ -139,7 +139,7 @@ function LevelRow({
 
 /**
  * Zones and aisles of a warehouse (Sprint 10) — optional; a small warehouse can ignore them. An aisle can sit in a zone
- * or straight in the warehouse. Racks are put in a zone / aisle from the Add / Edit rack dialogs.
+ * or straight in the warehouse. Modules are put on a floor (zone) / aisle from the Add / Edit module dialogs.
  */
 export function ManageLayoutDialog({ warehouseId, layout }: { warehouseId: string; layout?: WarehouseLayout }) {
   const [open, setOpen] = useState(false)
@@ -161,31 +161,31 @@ export function ManageLayoutDialog({ warehouseId, layout }: { warehouseId: strin
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm" variant="outline" />}>Zones &amp; aisles</DialogTrigger>
+      <DialogTrigger render={<Button size="sm" variant="outline" />}>Floors &amp; aisles</DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Zones &amp; aisles</DialogTitle>
+          <DialogTitle>Floors &amp; aisles</DialogTitle>
           <DialogDescription>
-            Optional. Group racks into zones and aisles so a location reads “Zone A › Aisle 3 › Rack B04”. Shelves are a
+            Optional. Group modules into floors (Block / Floor) and aisles so a location reads “Floor 00 › Aisle 01 › Module 603”. Shelves are a
             rack&apos;s rows and positions its cells.
           </DialogDescription>
         </DialogHeader>
 
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Zones</h3>
+          <h3 className="text-sm font-semibold">Floors (Block / Floor)</h3>
           {zones.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No zones yet.</p>
+            <p className="text-muted-foreground text-sm">No floors yet.</p>
           ) : (
             <ul className="divide-y border-y">
               {zones.map((z) => (
                 <LevelRow
                   key={z.id}
                   item={z}
-                  what="Zone"
+                  what="Floor"
                   busy={updateZone.isPending || deleteZone.isPending}
                   onSave={(input) => updateZone.mutateAsync({ id: z.id, ...input })}
                   onDelete={() =>
-                    deleteZone.mutate(z.id, { onSuccess: () => toast.success(`Zone ${z.code} removed`), onError })
+                    deleteZone.mutate(z.id, { onSuccess: () => toast.success(`Floor ${z.code} removed`), onError })
                   }
                 />
               ))}
@@ -199,7 +199,7 @@ export function ManageLayoutDialog({ warehouseId, layout }: { warehouseId: strin
                 { code: zoneCode, name: zoneName || undefined },
                 {
                   onSuccess: (z) => {
-                    toast.success(`Zone ${z.code} added`)
+                    toast.success(`Floor ${z.code} added`)
                     setZoneCode("")
                     setZoneName("")
                   },
@@ -209,14 +209,14 @@ export function ManageLayoutDialog({ warehouseId, layout }: { warehouseId: strin
             }}
           >
             <Input
-              aria-label="New zone code"
+              aria-label="New floor code"
               value={zoneCode}
               onChange={(e) => setZoneCode(e.target.value)}
               placeholder="Code, e.g. A"
               className="w-32"
             />
             <Input
-              aria-label="New zone name"
+              aria-label="New floor name"
               value={zoneName}
               onChange={(e) => setZoneName(e.target.value)}
               placeholder="Name (optional)"
@@ -244,13 +244,13 @@ export function ManageLayoutDialog({ warehouseId, layout }: { warehouseId: strin
                     zones.length > 0 && (
                       <ZoneSelect
                         zones={zones}
-                        label={`Zone of aisle ${a.code}`}
+                        label={`Floor of aisle ${a.code}`}
                         value={a.zoneId ?? NO_ZONE}
                         onChange={(v) =>
                           updateAisle.mutate(
                             { id: a.id, zoneId: v === NO_ZONE ? null : v },
                             {
-                              onSuccess: () => toast.success(`Aisle ${a.code} moved — its racks went with it`),
+                              onSuccess: () => toast.success(`Aisle ${a.code} moved — its modules went with it`),
                               onError,
                             },
                           )
@@ -298,7 +298,7 @@ export function ManageLayoutDialog({ warehouseId, layout }: { warehouseId: strin
               className="w-48"
             />
             {zones.length > 0 && (
-              <ZoneSelect zones={zones} label="Zone of the new aisle" value={aisleZone} onChange={setAisleZone} />
+              <ZoneSelect zones={zones} label="Floor of the new aisle" value={aisleZone} onChange={setAisleZone} />
             )}
             <Button type="submit" size="sm" disabled={!aisleCode.trim() || createAisle.isPending}>
               Add aisle
@@ -330,8 +330,8 @@ export function RackPlacementFields({
   if (!zones.length && !layout?.aisles.length) {
     return (
       <p className="text-muted-foreground rounded-md border border-dashed p-3 text-xs">
-        <span className="text-foreground font-medium">Zone / aisle:</span> this warehouse has none yet. They&apos;re
-        optional — add them with <span className="text-foreground font-medium">Zones &amp; aisles</span> on the
+        <span className="text-foreground font-medium">Floor / aisle:</span> this warehouse has none yet. They&apos;re
+        optional — add them with <span className="text-foreground font-medium">Floors &amp; aisles</span> on the
         warehouse page, then pick them here.
       </p>
     )
@@ -340,10 +340,10 @@ export function RackPlacementFields({
     <div className="grid gap-3 sm:grid-cols-2">
       {zones.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-sm font-medium">Zone</p>
+          <p className="text-sm font-medium">Floor (Block / Floor)</p>
           <ZoneSelect
             zones={zones}
-            label="Zone"
+            label="Floor"
             value={zoneId || NO_ZONE}
             onChange={(v) => {
               const z = v === NO_ZONE ? "" : v

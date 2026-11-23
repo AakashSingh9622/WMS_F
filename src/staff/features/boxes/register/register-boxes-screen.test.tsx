@@ -106,7 +106,7 @@ describe("RegisterBoxesScreen back and forth", () => {
     render(<RegisterBoxesScreen />)
     await waitFor(() => expect(screen.getByText("BX00000001 – BX00000002")).toBeTruthy())
     expect((screen.getByLabelText("Quantity") as HTMLInputElement).value).toBe("2")
-    const description = screen.getByLabelText("Description") as HTMLTextAreaElement
+    const description = screen.getByLabelText(/^Description/) as HTMLTextAreaElement
     expect(description.value).toBe("Tax")
     expect(screen.getByRole("button", { name: "No changes" }).hasAttribute("disabled")).toBe(true)
     fireEvent.change(description, { target: { value: "Board minutes" } })

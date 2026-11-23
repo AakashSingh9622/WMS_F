@@ -46,6 +46,8 @@ export const warehouseSchema = z.object({
   code: z.string(),
   name: z.string(),
   address: z.string().optional(),
+  boxCount: z.number(), // boxes on its shelves (not destroyed)
+  site: z.string().optional(), // Docbox "Sede": the site (head office) the warehouse belongs to
   rackCount: z.number(),
   slotCount: z.number(),
   usedCapacity: z.number(),
@@ -115,6 +117,7 @@ export type Slot = z.infer<typeof slotSchema>
 
 // Stored snapshot (codes). Older rows only have warehouse / rack / slot — see domain/location.ts for display.
 export const locationPathSchema = z.object({
+  site: z.string().optional(),
   warehouse: z.string(),
   zone: z.string().optional(),
   aisle: z.string().optional(),
@@ -250,6 +253,14 @@ export const boxSchema = z.object({
   quarantineReason: z.string().optional(),
   quarantinedAt: z.string().optional(),
   retentionCategory: z.string().optional(), // retention rule code (Records → Retention rules)
+  palletNo: z.string().optional(), // the pallet the box sits on
+  expedienteId: z.string().optional(), // the client's file (Docbox "Expediente") the box belongs to
+  expedienteCode: z.string().optional(),
+  containerNo: z.string().optional(), // Docbox "NºContenedor" (template NCE)
+  containerType: z.string().optional(), // Docbox "Tipo Contenedor" (template TYPECE)
+  comments: z.string().optional(), // free-text remarks (Docbox "Observaciones")
+  entryDate: z.string().optional(), // the day the box came into the archive (Docbox "Fecha Entrada")
+  customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional(), // the client's own fields, by code (C1 …)
   labelPrinted: z.boolean(),
   slotId: z.string().optional(),
   locationPath: locationPathSchema.optional(),
@@ -380,6 +391,9 @@ export const orderSchema = z.object({
   digitization: orderDigitizationSchema.optional(),
   collection: orderCollectionSchema.optional(),
   permanentWithdrawal: z.boolean().optional(), // dispatch: the boxes go back to the client for good
+  urgent: z.boolean().optional(), // urgent instead of a normal loan
+  loanType: z.enum(["normal", "urgent", "superior", "fax"]).optional(), // Docbox "Tipo Préstamo" (dispatch / digitize)
+  requestChannel: z.enum(["email", "phone", "in_person", "post", "fax"]).optional(), // how the client asked
   heldFromStatus: orderStatusSchema.optional(), // on_hold: where resume goes back to
   holdReason: z.string().optional(),
   // destruction asked for by an ordinary client contact: waits for the client's main contact (portal)

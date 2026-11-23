@@ -27,7 +27,8 @@ function describeForStaff(event: AuditEvent): DescribedAuditEvent {
   switch (event.type) {
     case "registered": {
       const via2 = event.orderNumber ? ` — collected on order ${event.orderNumber}` : ""
-      return { verb: "Registered", text: `Registered by ${by}${via2}` }
+      const why = event.note ? ` — ${event.note}` : ""
+      return { verb: "Registered", text: `Registered by ${by}${via2}${why}` }
     }
     case "label_printed":
       return { verb: "Label printed", text: `Label printed by ${by}` }
@@ -42,7 +43,8 @@ function describeForStaff(event: AuditEvent): DescribedAuditEvent {
     }
     case "details_edited": {
       const changes = (event.changes ?? []).map((c) => `${c.field}: '${c.from}' → '${c.to}'`).join(", ")
-      return { verb: "Details edited", text: `Details edited by ${by}${changes ? ` — ${changes}` : ""}` }
+      const why = event.note ? ` (reason: ${event.note})` : ""
+      return { verb: "Details edited", text: `Details edited by ${by}${changes ? ` — ${changes}` : ""}${why}` }
     }
     case "added_to_order": {
       const type = event.orderNumber?.startsWith("DSP")
@@ -90,7 +92,7 @@ function describeForStaff(event: AuditEvent): DescribedAuditEvent {
     case "hold_placed":
       return { verb: "Hold placed", text: `Hold placed by ${by}${event.note ? ` — ${event.note}` : ""}` }
     case "hold_released":
-      return { verb: "Hold released", text: `Hold released by ${by}` }
+      return { verb: "Hold released", text: `Hold released by ${by}${event.note ? ` — ${event.note}` : ""}` }
     case "status_changed":
       return { verb: "Status changed", text: `Status changed by ${by}` }
     case "quarantined":

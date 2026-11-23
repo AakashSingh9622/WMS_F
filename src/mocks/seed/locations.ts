@@ -90,6 +90,7 @@ export function generateLocationSeed(rng: () => number = mulberry32(SEED)): Loca
       code: wh.code,
       name: wh.name,
       address: wh.address,
+      boxCount: 0,
       rackCount: wh.rackCount,
       slotCount: wh.rackCount * ROWS * COLUMNS,
       usedCapacity: 0,

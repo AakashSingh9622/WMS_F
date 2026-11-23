@@ -13,6 +13,9 @@ import { useAppSelector } from "@/store/hooks"
 import { projectIdOf, useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 import { useCreateOrder } from "@/api/orders"
 import { BoxPicker } from "@/components/box-picker"
+import { BoxListImport } from "@/staff/features/orders/box-list-import"
+import { LOAN_TYPES, loanTypeLabel, type LoanType } from "@/domain/loan-type"
+import { REQUEST_CHANNELS, type RequestChannel } from "@/domain/request-channel"
 import { OrderTypeLabel } from "@/components/order-type-icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,6 +54,8 @@ export function CreateOrderScreen() {
   const [scheduledFor, setScheduledFor] = useState("")
   const [notes, setNotes] = useState("")
   const [permanentWithdrawal, setPermanentWithdrawal] = useState(false)
+  const [loanType, setLoanType] = useState<LoanType>("normal")
+  const [requestChannel, setRequestChannel] = useState<RequestChannel | "">("")
   const [error, setError] = useState<string | null>(null)
 
   const { data: clients } = useGetClientsWithDetailsQuery()
@@ -135,6 +140,8 @@ export function CreateOrderScreen() {
         scheduledFor: scheduledFor || undefined,
         notes: notes || undefined,
         permanentWithdrawal: type === "dispatch" ? permanentWithdrawal : undefined,
+        loanType: type === "dispatch" || type === "digitize" ? loanType : undefined,
+        requestChannel: requestChannel || undefined,
       })
       toast.success(`Order ${order.orderNumber} created`)
       router.push(`/app/orders/${order.id}`)
@@ -229,6 +236,11 @@ export function CreateOrderScreen() {
                   </Field>
                   <Field>
                     <FieldLabel>Returning boxes (currently out with this client)</FieldLabel>
+                    <BoxListImport
+                      clientId={clientId}
+                      type="collection"
+                      onBoxes={(ids) => setBoxIds((prev) => [...new Set([...prev, ...ids])])}
+                    />
                     <BoxPicker
                       boxes={clientBoxes?.items ?? []}
                       type="collection"
@@ -243,6 +255,11 @@ export function CreateOrderScreen() {
               {clientId && needsBoxPicker && (
                 <Field>
                   <FieldLabel>Boxes</FieldLabel>
+                  <BoxListImport
+                    clientId={clientId}
+                    type={type}
+                    onBoxes={(ids) => setBoxIds((prev) => [...new Set([...prev, ...ids])])}
+                  />
                   <BoxPicker
                     boxes={clientBoxes?.items ?? []}
                     type={type}
@@ -325,6 +342,46 @@ export function CreateOrderScreen() {
                     </span>
                   </span>
                 </label>
+              )}
+
+              <Field>
+                <FieldLabel htmlFor="channel">How did the client ask? (optional)</FieldLabel>
+                <Select value={requestChannel} onValueChange={(v) => setRequestChannel((v as RequestChannel) ?? "")}>
+                  <SelectTrigger id="channel">
+                    <SelectValue
+                      placeholder="Not recorded"
+                      getLabel={(v) => REQUEST_CHANNELS.find((c) => c.value === v)?.label ?? v}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REQUEST_CHANNELS.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              {(type === "dispatch" || type === "digitize") && (
+                <Field>
+                  <FieldLabel htmlFor="loan-type">Loan type</FieldLabel>
+                  <Select value={loanType} onValueChange={(v) => setLoanType((v as LoanType) ?? "normal")}>
+                    <SelectTrigger id="loan-type">
+                      <SelectValue getLabel={(v) => loanTypeLabel(v) ?? v} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LOAN_TYPES.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-muted-foreground text-xs">
+                    {LOAN_TYPES.find((t) => t.value === loanType)?.hint} It is shown on the order and counted in reports.
+                  </p>
+                </Field>
               )}
 
               <Field>

@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useMemo, useState } from "react"
 import { Pencil, Printer } from "@/components/icons"
 import { toast } from "sonner"
@@ -8,11 +9,15 @@ import { toast } from "sonner"
 import { useCan } from "@/auth/useAuth"
 import { useBoxSearch } from "@/api/boxes"
 import {
+  useAddShelf,
+  useDeleteRack,
   useRack,
   useRackRowStats,
   useRackSlots,
+  useRemoveLastShelf,
   useUpdateRack,
   useUpdateSlot,
+  useWarehouse,
   useWarehouseLayout,
 } from "@/api/warehouses"
 import type { RackRowStats } from "@/api/warehouses"
@@ -20,9 +25,10 @@ import type { Box, Rack, Slot } from "@/api/types"
 import { formatLength, toCentimetres, type LengthUnit } from "@/domain/dimensions"
 import { capacityLevel, capacityPercent } from "@/lib/capacity"
 import { LOCKED_SLOT_STATUSES, SLOT_LOCK_LABEL, isLockedSlot, type SlotLock } from "@/domain/status"
-import { shelfCode } from "@/domain/location"
+import { aisleTitle, shelfCode } from "@/domain/location"
 import { RackPlacementFields } from "@/staff/features/warehouses/manage-layout-dialog"
 import { cn } from "@/lib/utils"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -172,10 +178,10 @@ function EditRackDialog({ rack, warehouseId }: { rack: Rack; warehouseId: string
         aisleId: placement.aisleId || null,
         ...(lengthCm !== rack.cellLengthCm && { cellLength: Number(cellLength), lengthUnit }),
       })
-      toast.success("Rack updated")
+      toast.success("Module updated")
       setOpen(false)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't update the rack")
+      toast.error(err instanceof Error ? err.message : "Couldn't update the module")
     }
   }
 
@@ -194,7 +200,7 @@ function EditRackDialog({ rack, warehouseId }: { rack: Rack; warehouseId: string
     >
       <DialogTrigger render={<Button variant="outline" />}>
         <Pencil className="size-4" aria-hidden />
-        Edit rack
+        Edit module
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -343,10 +349,23 @@ function SelectedRowPanel({
                   <Link href={`/app/boxes/${box.id}`} className="text-primary font-mono text-xs hover:underline">
                     {box.boxNumber}
                   </Link>
-                  <span className="text-muted-foreground min-w-0 truncate text-xs">{box.clientName}</span>
+                  <span
+                    className="text-muted-foreground min-w-0 truncate text-xs"
+                    title={[box.clientName, box.expedienteCode, box.description, box.palletNo && `Pallet ${box.palletNo}`].filter(Boolean).join(" · ")}
+                  >
+                    {[box.clientName, box.expedienteCode, box.description, box.palletNo && `Pallet ${box.palletNo}`].filter(Boolean).join(" · ")}
+                  </span>
                 </li>
               ))}
             </ul>
+          )}
+          {row.boxCount > 0 && (
+            <p className="text-muted-foreground text-xs">
+              {boxes.length < row.boxCount && <>Showing the first {boxes.length} of {row.boxCount}. </>}
+              <Link href={`/app/boxes?module=${encodeURIComponent(rackCode)}&shelf=${row.row}`} className="text-primary hover:underline">
+                See {boxes.length < row.boxCount ? "all of them" : "them"} in Find a box
+              </Link>
+            </p>
           )}
         </div>
 
@@ -385,12 +404,82 @@ function SelectedRowPanel({
   )
 }
 
+/** Docbox "Fila / Balda" (Nuevo, Borrar): add a shelf on top, remove the last (empty) one, or delete the whole module. */
+function ShelfTools({ rack, warehouseId }: { rack: Rack; warehouseId: string }) {
+  const router = useRouter()
+  const add = useAddShelf()
+  const removeLast = useRemoveLastShelf()
+  const del = useDeleteRack()
+  const busy = add.isPending || removeLast.isPending || del.isPending
+  const [ask, setAsk] = useState<"remove" | "delete" | null>(null)
+  const fail = (err: unknown) => toast.error(err instanceof Error ? err.message : "That didn't work")
+  return (
+    <>
+      <Button
+        variant="outline"
+        disabled={busy}
+        onClick={() => add.mutate(rack.id, { onSuccess: () => toast.success(`Shelf ${rack.rows + 1} added`), onError: fail })}
+      >
+        Add shelf
+      </Button>
+      <Button
+        variant="outline"
+        disabled={busy || rack.rows <= 1}
+        title={rack.rows <= 1 ? "A module needs at least one shelf" : `Removes shelf ${rack.rows} (it must be empty). To take another shelf out of use, set its state to Blocked.`}
+        onClick={() => setAsk("remove")}
+      >
+        Remove last shelf
+      </Button>
+      <Button
+        variant="destructive"
+        disabled={busy}
+        onClick={() => setAsk("delete")}
+      >
+        Delete module
+      </Button>
+      <ConfirmDialog
+        open={ask === "remove"}
+        onOpenChange={(open) => !open && setAsk(null)}
+        title={`Remove shelf ${rack.rows}?`}
+        description={`Shelf ${rack.rows} of ${rack.label} will be removed. It must be empty — move any boxes off it first. To take a different shelf out of use, set its state to Blocked instead.`}
+        confirmLabel="Remove shelf"
+        onConfirm={async () => {
+          try {
+            await removeLast.mutateAsync(rack.id)
+            toast.success(`Shelf ${rack.rows} removed`)
+          } catch (err) {
+            fail(err)
+          }
+        }}
+      />
+      <ConfirmDialog
+        open={ask === "delete"}
+        onOpenChange={(open) => !open && setAsk(null)}
+        title="Delete this module?"
+        description={`${rack.label} (${rack.code}) and all its ${rack.rows} shelves will be deleted. It must hold no boxes. This can't be undone.`}
+        confirmLabel="Delete module"
+        destructive
+        onConfirm={async () => {
+          try {
+            await del.mutateAsync(rack.id)
+            toast.success("Module deleted")
+            router.push(`/app/warehouses/${warehouseId}`)
+          } catch (err) {
+            fail(err)
+          }
+        }}
+      />
+    </>
+  )
+}
+
 // --- Screen ----------------------------------------------------------------
 
 export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string; rackId: string }) {
   const canManageLayout = useCan("layout.manage")
 
   const { data: rack, isLoading: loadingRack } = useRack(rackId)
+  const { data: warehouse } = useWarehouse(warehouseId)
   const { data: slots, isLoading: loadingSlots, isError } = useRackSlots(rackId)
   // Per-row box counts come from one SQL aggregate; the actual boxes are only fetched for the SELECTED row
   // (first 100, newest first) — never the whole rack at once.
@@ -411,6 +500,10 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
   const rowsInUse = rows.filter((r) => r.used > 0).length
   const fullCells = rows.reduce((sum, r) => sum + r.fullCells, 0)
   const blockedCells = rows.reduce((sum, r) => sum + r.blockedCells, 0)
+  // Space that can still take boxes: blocked / locked cells don't count as free (and are listed apart).
+  const allSlots = rows.flatMap((r) => r.slots)
+  const usableFree = allSlots.reduce((sum, s) => sum + (isLockedSlot(s.status) ? 0 : Math.max(s.capacity - s.used, 0)), 0)
+  const lockedCapacity = allSlots.reduce((sum, s) => sum + (isLockedSlot(s.status) ? s.capacity : 0), 0)
   const onOrderRows = rows.filter((r) => r.onOrder).length
   const usedPercent = capacityPercent(totalUsed, totalCapacity)
 
@@ -449,16 +542,18 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
             <h1 className="text-2xl font-semibold tracking-tight">{rack?.label}</h1>
             {rack && (
               <p className="text-muted-foreground text-sm tabular-nums">
-                {rack.zone && <>Zone {rack.zone.code} · </>}
-                {rack.aisle && <>Aisle {rack.aisle.code} · </>}
-                {!rack.zone && !rack.aisle && <>No zone or aisle · </>}
-                Code <span className="font-mono">{rack.code}</span> · {rack.rows} shelves × {rack.columns} positions ·{" "}
+                {warehouse?.site && <>Site {warehouse.site} · </>}
+                {warehouse && <>{warehouse.name} · </>}
+                {rack.zone && <>Floor {rack.zone.code} · </>}
+                {rack.aisle && <>{aisleTitle(rack.aisle, rack.zone).title} · </>}
+                {!rack.zone && !rack.aisle && <>No floor or aisle · </>}
+                Module code <span className="font-mono">{rack.code}</span> · {rack.rows} shelves × {rack.columns} positions ·{" "}
                 {fmt(rack.totalCapacity)} cm total capacity · each cell {formatLength(rack.cellLengthCm)}
               </p>
             )}
           </div>
         )}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           {rack && (
             <Button
               variant="outline"
@@ -469,11 +564,17 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
               Print labels
             </Button>
           )}
+          {rack && (
+            <Button variant="outline" nativeButton={false} render={<Link href={`/app/boxes?module=${encodeURIComponent(rack.code)}`} />}>
+              View boxes
+            </Button>
+          )}
           {canManageLayout && rack && <EditRackDialog rack={rack} warehouseId={warehouseId} />}
+          {canManageLayout && rack && <ShelfTools rack={rack} warehouseId={warehouseId} />}
         </div>
       </div>
 
-      {isError && <p className="text-destructive text-sm">Couldn&apos;t load this rack. Try refreshing.</p>}
+      {isError && <p className="text-destructive text-sm">Couldn&apos;t load this module. Try refreshing.</p>}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Capacity used">
@@ -495,9 +596,12 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
         </StatCard>
         <StatCard label="Free space">
           <p className="flex items-baseline gap-2">
-            <span className="text-3xl font-semibold tabular-nums">{fmt(Math.max(totalCapacity - totalUsed, 0))}</span>
+            <span className="text-3xl font-semibold tabular-nums">{fmt(usableFree)}</span>
             <span className="text-muted-foreground text-sm">cm</span>
           </p>
+          {lockedCapacity > 0 && (
+            <p className="text-muted-foreground text-xs">{fmt(lockedCapacity)} cm more is blocked — not counted</p>
+          )}
         </StatCard>
         <StatCard label="Shelves in use">
           <p className="flex items-baseline gap-2">
@@ -505,10 +609,21 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
             <span className="text-muted-foreground text-sm">of {rows.length}</span>
           </p>
         </StatCard>
-        <StatCard label="Full · Blocked · On order">
-          <p className="text-3xl font-semibold tabular-nums">
-            {fullCells} · {blockedCells} · {onOrderRows}
-          </p>
+        <StatCard label="Positions and orders">
+          <dl className="space-y-1 text-sm">
+            {(
+              [
+                ["Full positions", fullCells],
+                ["Blocked positions", blockedCells],
+                ["Shelves on an order", onOrderRows],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label} className="flex items-baseline justify-between gap-3">
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="text-lg font-semibold tabular-nums">{value}</dd>
+              </div>
+            ))}
+          </dl>
         </StatCard>
       </div>
 
@@ -579,7 +694,7 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
                           <span
                             className={cn("block text-2xl leading-none font-semibold tabular-nums", LEVEL_TEXT[level])}
                           >
-                            {row.state === "blocked" ? "—" : percent}
+                            {row.state === "blocked" ? <span className="text-base">Blocked</span> : percent}
                             {row.state !== "blocked" && <span className="text-muted-foreground text-sm">%</span>}
                           </span>
                           <span className="text-muted-foreground font-mono text-xs tabular-nums">

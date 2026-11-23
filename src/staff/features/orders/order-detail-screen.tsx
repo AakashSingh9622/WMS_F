@@ -16,6 +16,8 @@ import { AuditTimeline } from "@/components/audit-timeline"
 import { StoredLocation } from "@/components/location-path"
 import { locationText } from "@/domain/location"
 import { Skeleton } from "@/components/ui/skeleton"
+import { requestChannelLabel } from "@/domain/request-channel"
+import { loanTypeLabel, loanTypeOf } from "@/domain/loan-type"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -46,13 +48,24 @@ function LineLocation({ line }: { line: OrderLine }) {
 }
 
 export function OrderDetailScreen({ orderId }: { orderId: string }) {
-  const { data: order, isLoading } = useOrder(orderId)
+  const { data: order, isLoading, isError, error } = useOrder(orderId)
   const canRegister = useCan("boxes.operate")
   const { data: lines } = useOrderLines(orderId)
   const { data: activity } = useAuditSearch({ orderId, pageSize: 100 })
 
   if (isLoading) return <Skeleton className="h-96 w-full" />
-  if (!order) return null
+  if (isError || !order) {
+    return (
+      <div className="space-y-2">
+        <p className="text-destructive text-sm">
+          {error instanceof Error ? error.message : "This order could not be loaded."}
+        </p>
+        <Link href="/app/orders" className="text-primary text-sm hover:underline">
+          ← Back to orders
+        </Link>
+      </div>
+    )
+  }
 
   const printDoc = PRINT_DOCS[order.type]
 
@@ -64,6 +77,10 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
           <OrderTypeLabel type={order.type} />
           <OrderStatusBadge status={order.status} />
           {order.permanentWithdrawal && <Badge variant="outline">Permanent withdrawal</Badge>}
+          {loanTypeOf(order) && loanTypeOf(order) !== "normal" && (
+            <Badge variant={loanTypeOf(order) === "fax" ? "outline" : "destructive"}>{loanTypeLabel(loanTypeOf(order))}</Badge>
+          )}
+          {order.requestChannel && <Badge variant="outline">{requestChannelLabel(order.requestChannel)}</Badge>}
         </div>
         <p className="text-muted-foreground text-sm">
           <Link href={`/app/clients/${order.clientId}`} className="hover:text-primary hover:underline">
@@ -104,7 +121,7 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-3 lg:col-span-2">
           <h2 className="text-sm font-semibold">Lines ({lines?.length ?? 0})</h2>
-          <div className="overflow-hidden rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-muted-foreground text-xs">
                 <tr>
@@ -130,7 +147,9 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
                       <LineLocation line={line} />
                     </td>
                     <td className="p-2">
-                      <Badge variant="outline">{line.status}</Badge>
+                      <Badge variant="outline" className="capitalize">
+                        {line.status.replace(/_/g, " ")}
+                      </Badge>
                     </td>
                     <td className="p-2 text-muted-foreground">
                       {line.scannedBy ? `${line.scannedBy.name} at ${formatDateTime(line.scannedAt ?? "")}` : "—"}
@@ -151,6 +170,11 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
           <div>
             <h2 className="mb-2 text-sm font-semibold">Activity</h2>
             <AuditTimeline events={activity?.items ?? []} />
+            {(activity?.total ?? 0) > (activity?.items.length ?? 0) && (
+              <p className="text-muted-foreground mt-2 text-xs">
+                Showing the latest {activity?.items.length} of {activity?.total} events.
+              </p>
+            )}
           </div>
         </div>
 
@@ -318,6 +342,26 @@ export function OrderDetailScreen({ orderId }: { orderId: string }) {
               </CardContent>
             </Card>
           )}
+
+          {/* a witness slip ("testigo") takes the place of each box taken off the shelf */}
+          {(order.type === "dispatch" || order.type === "digitize") &&
+            ["scheduled", "in_progress", "ready", "completed"].includes(order.status) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Witness slips</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  <Link
+                    href={`/print/witness-slip/${order.id}`}
+                    target="_blank"
+                    className="text-primary text-sm hover:underline"
+                  >
+                    Print slips (one per box) →
+                  </Link>
+                  <p className="text-muted-foreground text-xs">Left on the shelf where each box was taken from.</p>
+                </CardContent>
+              </Card>
+            )}
         </div>
       </div>
     </div>

@@ -21,7 +21,7 @@ export function LocationLabelsDocument() {
   const { data: warehouse } = useWarehouse(rack?.warehouseId ?? "")
 
   if (!rackId) {
-    return <p className="text-muted-foreground p-8 text-sm">No rack specified — open this from a rack page.</p>
+    return <p className="text-muted-foreground p-8 text-sm">No module specified — open this from a module page.</p>
   }
   if (!rack || !slots) return <p className="text-muted-foreground p-8 text-sm">Loading…</p>
 

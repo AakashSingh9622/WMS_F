@@ -49,6 +49,10 @@ export interface OrderActions {
   canReceive: boolean
   canHold: boolean
   canResume: boolean
+  /** Correct a mistake: bring a cancelled / rejected order back to "requested". */
+  canReopen: boolean
+  /** Fix the loan type / channel / requester of a request (Docbox "Modificar Peticiones"). */
+  canEditDetails: boolean
   /** Second signature on a destruction (records.approve; the backend refuses the person who prepared it). */
   canApproveDestruction: boolean
   /** Proof of delivery for a dispatched order. */
@@ -90,13 +94,16 @@ export function getOrderActions(order: Order, roles: readonly Role[]): OrderActi
     canDispatch: operate && working && order.type === "dispatch",
     canAuthoriseDestruction: authorise && order.type === "destruction" && !order.destruction && beforeWork,
     canAuthoriseDigitization: authorise && order.type === "digitize" && !order.digitization && beforeWork,
-    canFixBoxScan: operate && order.type === "digitize" && (s === "scheduled" || s === "in_progress"),
+    // needs the client's digitising authorisation first (the backend refuses without it)
+    canFixBoxScan: operate && order.type === "digitize" && !!order.digitization && (s === "scheduled" || s === "in_progress"),
     canDestroy: operate && working && order.type === "destruction" && !!order.destruction?.approvedBy,
     canComplete: operate && s === "in_progress" && order.type === "collection",
     canPick: operate && working && (order.type === "dispatch" || order.type === "destruction"),
     canReceive: operate && s === "in_progress" && order.type === "collection",
     canHold: approve && next("on_hold"),
     canResume: approve && s === "on_hold",
+    canReopen: approve && (s === "cancelled" || s === "rejected"),
+    canEditDetails: approve,
     canApproveDestruction:
       can(roles, "records.approve") &&
       order.type === "destruction" &&

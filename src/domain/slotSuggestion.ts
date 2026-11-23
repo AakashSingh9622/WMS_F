@@ -62,7 +62,7 @@ export function suggestSlots(input: SlotSuggestionInput, context: SlotSuggestion
     const clientCount = clientBoxCountByRack.get(slot.rackId) ?? 0
     if (clientCount > 0) {
       score += 20
-      reasons.push(`Same rack as ${clientCount} other box${clientCount === 1 ? "" : "es"} from this client`)
+      reasons.push(`Same module as ${clientCount} other box${clientCount === 1 ? "" : "es"} from this client`)
     }
 
     const wasted = free - totalUnits

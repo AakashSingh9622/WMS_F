@@ -38,13 +38,13 @@ describe("describeAuditEvent (staff audience)", () => {
     const text = describeAuditEvent(
       baseEvent("allocated", { toLocation: { warehouse: "WH1", rack: "B-04", slot: "3-2" } }),
     ).text
-    expect(text).toBe("Filed in WH1 › Rack B-04 › Shelf 3 · Position 2 by Ahmed Khan")
+    expect(text).toBe("Filed in WH1 › Module B-04 › Shelf 3 · Position 2 by Ahmed Khan")
   })
 
   it("allocated — with zone and aisle (Sprint 10 snapshot)", () => {
     const toLocation = { warehouse: "WH1", zone: "A", aisle: "3", rack: "B04", slot: "3-2", shelf: 3, position: 2 }
     expect(describeAuditEvent(baseEvent("allocated", { toLocation })).text).toBe(
-      "Filed in WH1 › Zone A › Aisle 3 › Rack B04 › Shelf 3 · Position 2 by Ahmed Khan",
+      "Filed in WH1 › Floor A › Aisle 3 › Module B04 › Shelf 3 · Position 2 by Ahmed Khan",
     )
   })
 
@@ -58,7 +58,7 @@ describe("describeAuditEvent (staff audience)", () => {
       }),
     ).text
     expect(text).toBe(
-      "Moved from WH1 › Rack B-04 › Shelf 3 · Position 2 to WH1 › Rack C-01 › Shelf 1 · Position 4 by Sara Ali — note: rack B-04 maintenance",
+      "Moved from WH1 › Module B-04 › Shelf 3 · Position 2 to WH1 › Module C-01 › Shelf 1 · Position 4 by Sara Ali — note: rack B-04 maintenance",
     )
   })
 
@@ -108,7 +108,7 @@ describe("describeAuditEvent (staff audience)", () => {
     const text = describeAuditEvent(
       baseEvent("refiled", { toLocation: { warehouse: "WH1", rack: "B-04", slot: "3-2" } }),
     ).text
-    expect(text).toBe("Refiled in WH1 › Rack B-04 › Shelf 3 · Position 2 by Ahmed Khan")
+    expect(text).toBe("Refiled in WH1 › Module B-04 › Shelf 3 · Position 2 by Ahmed Khan")
   })
 
   it("marked_missing — with a note", () => {

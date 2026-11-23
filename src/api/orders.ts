@@ -4,6 +4,7 @@ import { z } from "zod"
 import { apiClient, parse } from "@/api/client"
 import { queryKeys } from "@/api/query-keys"
 import {
+  boxSchema,
   boxStatusSchema,
   locationPathSchema,
   orderLineSchema,
@@ -12,13 +13,22 @@ import {
   orderStatusSchema,
   orderTypeSchema,
 } from "@/api/types"
-import type { DestructionMethod, Order, OrderLine, OrderStatus, OrderType } from "@/api/types"
+import type { Box, DestructionMethod, Order, OrderLine, OrderStatus, OrderType } from "@/api/types"
 
 export interface OrderSearchInput {
   type?: OrderType
   status?: OrderStatus[]
   clientId?: string
   q?: string
+  /** Docbox "Tipo Préstamo". */
+  loanType?: string
+  /** How the client asked (Docbox "Tipo Petición"). */
+  requestChannel?: string
+  /** Who asked: part of the contact email or name (Docbox "Solicitado por"). */
+  requester?: string
+  /** Request date range, YYYY-MM-DD, inclusive. */
+  from?: string
+  to?: string
   page?: number
   pageSize?: number
 }
@@ -30,6 +40,11 @@ function toSearchParams(input: OrderSearchInput): URLSearchParams {
   if (input.type) sp.set("type", input.type)
   if (input.clientId) sp.set("clientId", input.clientId)
   if (input.q) sp.set("q", input.q)
+  if (input.loanType) sp.set("loanType", input.loanType)
+  if (input.requestChannel) sp.set("requestChannel", input.requestChannel)
+  if (input.requester) sp.set("requester", input.requester)
+  if (input.from) sp.set("from", input.from)
+  if (input.to) sp.set("to", input.to)
   if (input.page) sp.set("page", String(input.page))
   if (input.pageSize) sp.set("pageSize", String(input.pageSize))
   for (const s of input.status ?? []) sp.append("status", s)
@@ -48,6 +63,15 @@ export function useOrder(orderId: string) {
   return useQuery({
     queryKey: queryKeys.orders.detail(orderId),
     queryFn: async (): Promise<Order> => parse(orderSchema, await apiClient.get(`/orders/${orderId}`)),
+    enabled: !!orderId,
+  })
+}
+
+/** The boxes behind an order's lines (what a delivery note prints: description, pallet, the client's own fields …). */
+export function useOrderBoxes(orderId: string) {
+  return useQuery({
+    queryKey: [...queryKeys.orders.lines(orderId), "boxes"],
+    queryFn: async (): Promise<Box[]> => parse(z.array(boxSchema), await apiClient.get(`/orders/${orderId}/boxes`)),
     enabled: !!orderId,
   })
 }
@@ -76,6 +100,12 @@ export interface CreateOrderInput {
   notes?: string
   /** Dispatch only: the client keeps the boxes for good (they can't come back on a collection). */
   permanentWithdrawal?: boolean
+  /** Urgent instead of a normal loan. */
+  urgent?: boolean
+  /** Docbox "Tipo Préstamo" for a dispatch / digitize order. */
+  loanType?: "normal" | "urgent" | "superior" | "fax"
+  /** How the client asked: email, phone, in person, post or fax. */
+  requestChannel?: "email" | "phone" | "in_person" | "post" | "fax"
 }
 
 // Every mutation below invalidates broadly (orders/boxes/clients/audit/warehouses/racks) rather
@@ -136,6 +166,11 @@ export function useAuthoriseDigitization() {
   )
 }
 
+/** Digitize order: every box has been scanned — marks the boxes digitised and completes the order. */
+export function useDigitizeOrder() {
+  return useOrderAction((id) => `/orders/${id}/digitize`)
+}
+
 export function useDestroyOrder() {
   return useOrderAction<{ witness?: string; place?: string }>((id) => `/orders/${id}/destroy`)
 }
@@ -182,6 +217,27 @@ export function useHoldOrder() {
 }
 export function useResumeOrder() {
   return useOrderAction((id) => `/orders/${id}/resume`)
+}
+/** Correct a mistake: a cancelled / rejected order goes back to "requested" (boxes are claimed again). */
+export function useReopenOrder() {
+  return useOrderAction<{ reason: string }>((id) => `/orders/${id}/reopen`)
+}
+
+export interface EditOrderDetailsInput {
+  loanType?: "normal" | "urgent" | "superior" | "fax"
+  /** "" clears it. */
+  requestChannel?: "email" | "phone" | "in_person" | "post" | "fax" | ""
+  contactEmail?: string
+  remarks?: string
+}
+/** Docbox "Modificar Peticiones": correct the loan type / channel / requester of a request after the fact. */
+export function useEditOrderDetails() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ orderId, input }: { orderId: string; input: EditOrderDetailsInput }): Promise<Order> =>
+      parse(orderSchema, await apiClient.patch(`/orders/${orderId}/details`, input)),
+    onSuccess: () => invalidateEverythingOrderTouches(queryClient),
+  })
 }
 
 // --- Pick list and scanning ---------------------------------------------------------------------------------------

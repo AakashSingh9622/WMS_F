@@ -3,7 +3,7 @@
 import { useEffect } from "react"
 import { toast } from "sonner"
 
-import { useAllocateBoxes, useSuggestSlots } from "@/api/boxes"
+import { useAllocateBoxes, useBoxSearch, useSuggestSlots } from "@/api/boxes"
 import { StoredLocation } from "@/components/location-path"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -43,6 +43,10 @@ export function AllocateStep({
 
   const suggestSlots = useSuggestSlots()
   const allocate = useAllocateBoxes()
+  // Docbox shows the location of the most recently registered box so the next ones can go next to it: the client's
+  // newest box that is already on a shelf.
+  const lastFiled = useBoxSearch({ clientId, status: ["stored"], page: 1, pageSize: 1 }, { enabled: remaining.length > 0 })
+  const lastBox = lastFiled.data?.items[0]
 
   useEffect(() => {
     if (remaining.length === 0) return
@@ -106,6 +110,29 @@ export function AllocateStep({
           <>
             <section className="space-y-3">
               <h2 className="text-sm font-semibold">Suggested positions for all {remaining.length}</h2>
+              <p className="text-muted-foreground text-xs">
+                {remaining.length === 1
+                  ? "Each card is one position with room for this box."
+                  : `Each card is one position with room for all ${remaining.length} boxes — they will all go there together (${formatLength(unitsFor(remaining))}).`}
+              </p>
+              {lastBox?.slotId && lastBox.locationPath && (
+                <Card>
+                  <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">Same place as the last box of this client ({lastBox.boxNumber})</p>
+                      <StoredLocation path={lastBox.locationPath} className="text-sm font-medium" />
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={allocate.isPending}
+                      onClick={() => void runAllocation(remaining, lastBox.slotId as string)}
+                    >
+                      Use the same place
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
               {suggestSlots.isPending && (
                 <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                   <Skeleton className="h-32" />
@@ -128,7 +155,9 @@ export function AllocateStep({
                         </span>
                       )}
                       <StoredLocation path={s.locationPath} className="text-sm font-medium" />
-                      <p className="text-muted-foreground text-xs">{s.freeCapacity} cm free after placement</p>
+                      <p className="text-muted-foreground text-xs">
+                        Fits all {remaining.length === 1 ? "1 box" : `${remaining.length} boxes`} · {s.freeCapacity} cm free after placement
+                      </p>
                       <ul className="text-muted-foreground list-inside list-disc text-xs">
                         {s.reasons.map((r) => (
                           <li key={r}>{r}</li>

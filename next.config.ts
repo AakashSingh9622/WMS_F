@@ -45,6 +45,19 @@ const nextConfig: NextConfig = {
       // Staff users + roles (Settings → Users & roles). Not /api/clients/:id/users — that one is still MSW.
       { source: "/api/users", destination: `${BACKEND_API_URL}/api/users` },
       { source: "/api/users/:path*", destination: `${BACKEND_API_URL}/api/users/:path*` },
+      // Per-client custom box fields, and the reports page.
+      { source: "/api/custom-fields", destination: `${BACKEND_API_URL}/api/custom-fields` },
+      { source: "/api/custom-fields/:path*", destination: `${BACKEND_API_URL}/api/custom-fields/:path*` },
+      // A client's expedientes (Docbox "Expedientes - Clientes").
+      // The sites (Docbox "Sedes") warehouses belong to.
+      { source: "/api/sites", destination: `${BACKEND_API_URL}/api/sites` },
+      { source: "/api/expedientes", destination: `${BACKEND_API_URL}/api/expedientes` },
+      { source: "/api/expedientes/:path*", destination: `${BACKEND_API_URL}/api/expedientes/:path*` },
+      { source: "/api/reports/:path*", destination: `${BACKEND_API_URL}/api/reports/:path*` },
+      // Client details we keep locally (SAP code, tax ID, address, delivery-note columns) and contact permissions.
+      { source: "/api/clients/:clientId/profile", destination: `${BACKEND_API_URL}/api/clients/:clientId/profile` },
+      { source: "/api/clients/:clientId/contact-permissions", destination: `${BACKEND_API_URL}/api/clients/:clientId/contact-permissions` },
+      { source: "/api/clients/:clientId/contact-permissions/:email", destination: `${BACKEND_API_URL}/api/clients/:clientId/contact-permissions/:email` },
       // Per-client detail summary + Boxes/Orders tabs are real; only /users stays on MSW.
       { source: "/api/clients/:clientId", destination: `${BACKEND_API_URL}/api/clients/:clientId` },
       { source: "/api/clients/:clientId/boxes", destination: `${BACKEND_API_URL}/api/clients/:clientId/boxes` },

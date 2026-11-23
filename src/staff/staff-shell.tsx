@@ -48,6 +48,7 @@ const navIcons: Record<string, AppIcon> = {
   "/app/warehouses": MapPin,
   "/app/clients": Users,
   "/app/exceptions": TriangleAlertIcon,
+  "/app/reports": ScrollText,
   "/app/records": Shredder,
   "/app/billing": Invoice,
   "/app/audit": ScrollText,
