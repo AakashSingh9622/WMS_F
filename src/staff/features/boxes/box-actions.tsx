@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { todayISO } from "@/lib/formatting"
 import type { Box } from "@/api/types"
 import { RetentionCategoryField } from "@/staff/features/boxes/retention-category-field"
+import { boxVolume, formatVolume } from "@/domain/dimensions"
 
 function onError(err: unknown) {
   toast.error(err instanceof Error ? err.message : "That didn't work")
@@ -470,7 +471,7 @@ function DuplicateBoxDialog({ box }: { box: Box }) {
               <span>
                 <span className="font-medium">Put the copy on the same shelf</span>
                 <span className="text-muted-foreground block text-xs">
-                  Needs room for another {box.lengthCm ?? "?"} cm there; if there is none, the copy is created without a shelf.
+                  Needs room for another {formatVolume(boxVolume(box))} there; if there is none, the copy is created without a shelf.
                 </span>
               </span>
             </label>

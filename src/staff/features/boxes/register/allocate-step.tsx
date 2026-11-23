@@ -9,15 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ChooseLocation } from "@/staff/features/warehouses/choose-location"
-import { boxLengthCm, formatLength } from "@/domain/dimensions"
+import { boxVolume, formatVolume } from "@/domain/dimensions"
 import { locationText } from "@/domain/location"
 import type { Box, LocationPath, Slot } from "@/api/types"
 import { cn } from "@/lib/utils"
 
-const lengthOf = (b: Box) => b.lengthCm ?? boxLengthCm(b.size) // cm
-
+/** Total space (cm³) these boxes take in a cell. */
 function unitsFor(boxes: Box[]): number {
-  return boxes.reduce((sum, b) => sum + lengthOf(b), 0) // total length in cm
+  return boxes.reduce((sum, b) => sum + boxVolume(b), 0)
 }
 
 /**
@@ -58,9 +57,9 @@ export function AllocateStep({
     const taken: Box[] = []
     let used = 0
     for (const box of remaining) {
-      if (used + lengthOf(box) > free) continue
+      if (used + boxVolume(box) > free) continue
       taken.push(box)
-      used += lengthOf(box)
+      used += boxVolume(box)
     }
     return taken
   }
@@ -113,7 +112,7 @@ export function AllocateStep({
               <p className="text-muted-foreground text-xs">
                 {remaining.length === 1
                   ? "Each card is one position with room for this box."
-                  : `Each card is one position with room for all ${remaining.length} boxes — they will all go there together (${formatLength(unitsFor(remaining))}).`}
+                  : `Each card is one position with room for all ${remaining.length} boxes — they will all go there together (${formatVolume(unitsFor(remaining))}).`}
               </p>
               {lastBox?.slotId && lastBox.locationPath && (
                 <Card>
@@ -156,7 +155,7 @@ export function AllocateStep({
                       )}
                       <StoredLocation path={s.locationPath} className="text-sm font-medium" />
                       <p className="text-muted-foreground text-xs">
-                        Fits all {remaining.length === 1 ? "1 box" : `${remaining.length} boxes`} · {s.freeCapacity} cm free after placement
+                        Fits all {remaining.length === 1 ? "1 box" : `${remaining.length} boxes`} · {formatVolume(s.freeCapacity)} free after placement
                       </p>
                       <ul className="text-muted-foreground list-inside list-disc text-xs">
                         {s.reasons.map((r) => (
@@ -191,7 +190,7 @@ export function AllocateStep({
           <CardHeader>
             <CardTitle className="text-base">Progress</CardTitle>
             <CardDescription>
-              {filedCount} of {boxes.length} filed · {formatLength(unitsFor(remaining))} still to place
+              {filedCount} of {boxes.length} filed · {formatVolume(unitsFor(remaining))} still to place
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

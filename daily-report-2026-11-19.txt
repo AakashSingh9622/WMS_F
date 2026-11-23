@@ -1,0 +1,8 @@
+Daily Report - 19 Nov 2026
+
+1. Added a box capacity bar (remaining space in a box) and a document list and upload for boxes and orders, with file-type icons.
+2. Improved the staff dashboard (loans card, error and permission handling) and box registration (shelf validation, site/warehouse lists, required own fields).
+3. Reviewed the 45-page Docbox pilot PDF and listed the 12 record-level features still missing; added a project overview document.
+4. Built the record entity in the backend (new tables only, unique internal codes, history for every change).
+5. Added the Records tab on each box (add, duplicate, edit, history), an Excel template per client and file, and bulk import of records with an error report by row.
+6. Tested on the real database; code pushed to the frontend and backend repositories.

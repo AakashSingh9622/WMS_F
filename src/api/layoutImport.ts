@@ -29,7 +29,7 @@ export type LayoutImportResult = z.infer<typeof resultSchema>
 export function useImportLayout() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { rows: LayoutRow[]; columns: number; cellLengthCm: number; dryRun?: boolean }) =>
+    mutationFn: async (input: { rows: LayoutRow[]; columns: number; cellLengthCm: number; cellHeightCm: number; cellDepthCm: number; dryRun?: boolean }) =>
       parse(resultSchema, await apiClient.post("/warehouses/import-layout", input)),
     onSuccess: (r) => {
       if (!r.dryRun) for (const prefix of ["warehouses", "racks", "boxes"]) queryClient.invalidateQueries({ queryKey: [prefix] })

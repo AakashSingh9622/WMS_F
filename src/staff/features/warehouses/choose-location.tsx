@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { isLockedSlot } from "@/domain/status"
 import { cn } from "@/lib/utils"
+import { formatVolume } from "@/domain/dimensions"
 
 const ALL = "__all"
 const NONE = "__none"
@@ -32,7 +33,7 @@ export function ChooseLocation({
   pickLabel = "Use this position",
   onPick,
 }: {
-  /** cm the box(es) need — the shelf lookup suggests the position that fits it best. */
+  /** Space (cm³) the box(es) need — the shelf lookup suggests the position that fits it best. (Wire name `needCm` is historic.) */
   needCm: number
   /** Highlighted in the grid (e.g. the box's current position when moving). */
   selectedSlotId?: string
@@ -429,7 +430,7 @@ function LookupResult({
               >
                 <span className="block font-medium">Position {p.column}</span>
                 <span className="text-muted-foreground tabular-nums">
-                  {isLockedSlot(p.status) ? p.status : `${free} cm free`}
+                  {isLockedSlot(p.status) ? p.status : `${formatVolume(free)} free`}
                   {p.id === found.suggestedSlotId && " · best fit"}
                 </span>
               </button>
@@ -438,7 +439,7 @@ function LookupResult({
         </div>
         {!found.suggestedSlotId && (
           <p className="text-muted-foreground text-xs">
-            {found.kind === "position" ? "This position doesn't" : "No position on this shelf"} has {needCm} cm free —
+            {found.kind === "position" ? "This position doesn't" : "No position on this shelf"} has {formatVolume(needCm)} free —
             choose one to fill what fits, or try another shelf.
           </p>
         )}

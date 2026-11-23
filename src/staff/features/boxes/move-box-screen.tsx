@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Skeleton } from "@/components/ui/skeleton"
-import { boxLengthCm } from "@/domain/dimensions"
+import { boxVolume } from "@/domain/dimensions"
 import { ChooseLocation } from "@/staff/features/warehouses/choose-location"
 import type { Slot } from "@/api/types"
 
@@ -122,7 +122,7 @@ export function MoveBoxScreen({ boxId }: { boxId: string }) {
       </section>
 
       <ChooseLocation
-        needCm={box.lengthCm ?? boxLengthCm(box.size)}
+        needCm={boxVolume(box)}
         selectedSlotId={box.slotId}
         disabled={!reason || allocate.isPending}
         pickLabel="Move here"

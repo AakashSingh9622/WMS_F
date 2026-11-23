@@ -116,13 +116,17 @@ mock endpoint under `/api/`. New API modules/handlers must follow the same conve
 and the login/forgot-password pages call `fetch("/api/auth/...")` directly (not through `apiClient`) for the
 same reason.
 
-## Storage capacity is in centimetres (not box units)
+## Storage capacity is volume in cm³ (not box units)
 
-Each rack cell (row × column) IS one storage location (slot) — no sub-slots. When adding a rack the user gives
-the length of ONE cell in cm or feet; the backend converts feet → whole cm and stores it (`Rack.cellLengthCm`,
-`Slot.capacity` = that length, `Slot.used` = cm of boxes inside). A box takes `BOX_LENGTH_CM` of a cell
-(standard 40 cm, large 80 cm — `src/domain/dimensions.ts`, mirrored in the backend's `src/utils/dimensions.js`;
-change both together). `src/domain/slotSuggestion.ts` + the MSW location mocks still use the old unit model but
+Each rack cell (row × column) IS one storage location (slot) — no sub-slots — and is box-shaped. When adding a rack
+the user gives the length, height and depth (width) of ONE cell in cm or feet (one unit for all three); the backend
+converts feet → whole cm (1–1000 each) and stores them (`Rack.cellLengthCm/cellHeightCm/cellDepthCm`). `Slot.capacity`
+= length × height × depth in **cm³**, `Slot.used` = cm³ of boxes inside. A box takes its own length × height × depth:
+box sizes (Settings → Box sizes) have `lengthCm/heightCm/depthCm`, and a registered box snapshots them plus
+`volumeCm3` (`boxVolume()`, `src/domain/dimensions.ts`, mirrored in the backend's `src/utils/dimensions.js`; change
+both together). Show volumes with `formatVolume` (litres / m³), never raw cm³. The wire param `needCm` of
+`/locations/resolve` is historic — it carries cm³. Existing data was migrated with height = depth = 50 cm
+(`test/prisma/sql/cell-volume.sql`, run once) so old boxes still fit exactly where they did. `src/domain/slotSuggestion.ts` + the MSW location mocks still use the old unit model but
 are dead code now that Warehouse/Rack/Slot go to the real backend.
 
 Box sizes (Sprint 11) are a list, not an enum: `Box.size` is a size code (`standard`, `large`, or one an admin added in

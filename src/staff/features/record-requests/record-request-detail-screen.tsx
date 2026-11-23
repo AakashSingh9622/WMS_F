@@ -172,6 +172,8 @@ export function RecordRequestDetailScreen({ requestId }: { requestId: string }) 
           {request.closedAt && (
             <Info label={request.status === "cancelled" ? "Cancelled" : "Returned"} value={`${formatDateTime(request.closedAt)}${request.closedBy?.name ? ` by ${request.closedBy.name}` : ""}`} />
           )}
+          {request.orderNumber && <Info label="Order number (Nro. Pedido)" value={request.orderNumber} />}
+          {request.expurgo && <Info label="Expurgo" value="Intended for destruction (information only — nothing is destroyed)" />}
           {request.notes && <Info label="Notes" value={request.notes} />}
         </CardContent>
       </Card>

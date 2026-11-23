@@ -6,6 +6,7 @@ import type { Slot } from "@/api/types"
 import { cn } from "@/lib/utils"
 import { capacityLevel, capacityPercent } from "@/lib/capacity"
 import { isLockedSlot } from "@/domain/status"
+import { formatVolume } from "@/domain/dimensions"
 
 const STATUS_FILL: Record<Slot["status"], string> = {
   available: "bg-card border-border hover:border-status-stored/60 hover:bg-status-stored/5",
@@ -114,7 +115,7 @@ export function SlotGrid({ rows, columns, slots, selectedSlotId, onSelectSlot, r
                   disabled={!slot}
                   aria-label={
                     slot
-                      ? `Slot ${slot.code}, ${slot.status}, ${percent}% full (${slot.used} of ${slot.capacity} cm used)`
+                      ? `Slot ${slot.code}, ${slot.status}, ${percent}% full (${formatVolume(slot.used)} of ${formatVolume(slot.capacity)} used)`
                       : undefined
                   }
                   className={cn(
@@ -131,9 +132,9 @@ export function SlotGrid({ rows, columns, slots, selectedSlotId, onSelectSlot, r
                           {isLockedSlot(slot.status) ? "—" : `${percent}%`}
                         </span>
                         <span className="text-muted-foreground text-[10px] leading-tight tabular-nums">
-                          {slot.used}/{slot.capacity}
+                          {formatVolume(slot.used)}
                           <br />
-                          cm
+                          of {formatVolume(slot.capacity)}
                         </span>
                       </span>
 

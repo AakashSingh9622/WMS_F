@@ -6,7 +6,7 @@ import Link from "next/link"
 import { useBox } from "@/api/boxes"
 import { useAuditSearch } from "@/api/audit"
 import { useCustomFields } from "@/api/customFields"
-import { boxLengthCm } from "@/domain/dimensions"
+import { DEFAULT_DEPTH_CM, DEFAULT_HEIGHT_CM, BOX_LENGTH_CM, boxVolume, formatDimensions, formatVolume } from "@/domain/dimensions"
 import { useBoxSizeName } from "@/api/settings"
 import { shelfAndPosition } from "@/domain/location"
 import { AuditTimeline } from "@/components/audit-timeline"
@@ -63,7 +63,7 @@ export function BoxOverviewTab({ boxId }: { boxId: string }) {
             <Field label="Barcode" value={box.barcode} />
             <Field label="Client" value={box.clientName} />
             {box.expedienteCode && <Field label="Expediente" value={box.expedienteCode} />}
-            <Field label="Size" value={`${sizeName(box.size)} (${box.lengthCm ?? boxLengthCm(box.size)} cm)`} />
+            <Field label="Size" value={`${sizeName(box.size)} (${formatDimensions(box.lengthCm ?? BOX_LENGTH_CM[box.size] ?? BOX_LENGTH_CM.standard, box.heightCm ?? DEFAULT_HEIGHT_CM, box.depthCm ?? DEFAULT_DEPTH_CM)} · ${formatVolume(boxVolume(box))})`} />
           </dl>
         </section>
 

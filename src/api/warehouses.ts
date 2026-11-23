@@ -241,8 +241,10 @@ interface CreateRackInput {
   label: string
   rows: number
   columns: number
-  /** Length of ONE cell (row × column) in the unit below; the backend stores whole centimetres. */
+  /** Length, height and depth of ONE cell (row × column) in the unit below; the backend stores whole centimetres. */
   cellLength: number
+  cellHeight: number
+  cellDepth: number
   lengthUnit: "cm" | "ft"
   zoneId?: string
   aisleId?: string
@@ -267,6 +269,8 @@ interface UpdateRackInput {
   warehouseId: string
   /** New length of ONE cell in the unit below; the backend stores whole centimetres and applies it to every cell. */
   cellLength?: number
+  cellHeight?: number
+  cellDepth?: number
   lengthUnit?: "cm" | "ft"
   label?: string
   /** null = take the rack out of its zone / aisle. An aisle decides the zone. */
@@ -279,8 +283,20 @@ export function useUpdateRack() {
 
   return useMutation({
     // undefined fields drop out of the JSON body, so only what was sent changes
-    mutationFn: async ({ rackId, cellLength, lengthUnit, label, zoneId, aisleId }: UpdateRackInput): Promise<Rack> =>
-      parse(rackSchema, await apiClient.patch(`/racks/${rackId}`, { cellLength, lengthUnit, label, zoneId, aisleId })),
+    mutationFn: async ({
+      rackId,
+      cellLength,
+      cellHeight,
+      cellDepth,
+      lengthUnit,
+      label,
+      zoneId,
+      aisleId,
+    }: UpdateRackInput): Promise<Rack> =>
+      parse(
+        rackSchema,
+        await apiClient.patch(`/racks/${rackId}`, { cellLength, cellHeight, cellDepth, lengthUnit, label, zoneId, aisleId }),
+      ),
     // a new zone / aisle also changes the stored location of the boxes in the rack
     onSuccess: (_rack, variables) => invalidateLayout(queryClient, variables.warehouseId),
   })

@@ -63,3 +63,9 @@ const gbp = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" 
 export function formatMoney(value: number): string {
   return gbp.format(value)
 }
+
+/** "YYYY-MM-DDTHH:mm" in the browser's local time: the value (and max) of a datetime-local input. */
+export function toDateTimeLocal(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}

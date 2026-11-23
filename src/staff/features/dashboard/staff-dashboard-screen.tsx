@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils"
 import { AuditTimeline } from "@/components/audit-timeline"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StaffUpdates } from "@/staff/features/dashboard/staff-updates"
+import { formatVolume } from "@/domain/dimensions"
 
 // Only the latest few events live on the dashboard (so the page stays short); the full history is the Audit log.
 const RECENT_ACTIVITY_COUNT = 6
@@ -263,9 +264,9 @@ function WarehouseCard({
           {code}
         </span>
         <p className="mt-1 truncate font-semibold">{name}</p>
-        <p className="mt-0.5 text-xs font-medium tabular-nums">{Math.max(total - used, 0).toLocaleString("en-GB")} cm free</p>
+        <p className="mt-0.5 text-xs font-medium tabular-nums">{formatVolume(Math.max(total - used, 0))} free</p>
         <p className="text-muted-foreground text-xs tabular-nums">
-          {used.toLocaleString("en-GB")} of {total.toLocaleString("en-GB")} cm used
+          {formatVolume(used)} of {formatVolume(total)} used
         </p>
         <p className="text-muted-foreground text-xs tabular-nums">
           {racks} rack{racks === 1 ? "" : "s"} · {slots} slots
@@ -460,7 +461,7 @@ export function StaffDashboardScreen() {
             </h2>
             {warehouses && totalCapacity > 0 && (
               <p className="text-muted-foreground text-xs tabular-nums">
-                {totalUsed.toLocaleString("en-GB")} / {totalCapacity.toLocaleString("en-GB")} cm used overall
+                {formatVolume(totalUsed)} / {formatVolume(totalCapacity)} used overall
               </p>
             )}
           </div>

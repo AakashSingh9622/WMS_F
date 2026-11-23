@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { z } from "zod"
 
 import { apiClient, parse } from "@/api/client"
-import { BOX_LENGTH_CM } from "@/domain/dimensions"
+import { BOX_VOLUME_CM3, sizeVolumeCm3 } from "@/domain/dimensions"
 import { boxSizeTypeSchema, type BoxSize, type BoxSizeType } from "@/api/types"
 
 // Box sizes (Sprint 11): the built-in standard / large plus any an admin adds — a name and the shelf length.
@@ -29,12 +29,12 @@ export function useBoxSizes(): BoxSizeType[] {
   return useBoxSizeSettings().data?.items ?? []
 }
 
-/** Length (cm) per box size code, as set by the admin. Falls back to the built-in defaults until it has loaded. */
-export function useBoxLengths(): Record<BoxSize, number> {
+/** Space one box takes in a cell (cm³) per size code, as set by the admin. Falls back to the built-in defaults until it has loaded. */
+export function useBoxVolumes(): Record<BoxSize, number> {
   const items = useBoxSizes()
   return items.length
-    ? { ...BOX_LENGTH_CM, ...Object.fromEntries(items.map((s) => [s.code, s.lengthCm])) }
-    : BOX_LENGTH_CM
+    ? { ...BOX_VOLUME_CM3, ...Object.fromEntries(items.map((s) => [s.code, sizeVolumeCm3(s)])) }
+    : BOX_VOLUME_CM3
 }
 
 /** code -> display name ("archive-xl" -> "Archive XL"); unknown codes show as they are. */
@@ -52,7 +52,7 @@ function useRefreshSizes() {
 export function useCreateBoxSize() {
   const refresh = useRefreshSizes()
   return useMutation({
-    mutationFn: async (input: { name: string; lengthCm: number }): Promise<BoxSizeType> =>
+    mutationFn: async (input: { name: string; lengthCm: number; heightCm: number; depthCm: number }): Promise<BoxSizeType> =>
       parse(boxSizeTypeSchema, await apiClient.post("/settings/box-sizes", input)),
     onSuccess: refresh,
   })
@@ -69,6 +69,8 @@ export function useUpdateBoxSize() {
       code: string
       name?: string
       lengthCm?: number
+      heightCm?: number
+      depthCm?: number
       active?: boolean
     }): Promise<BoxSizeType> => parse(boxSizeTypeSchema, await apiClient.patch(`/settings/box-sizes/${code}`, input)),
     onSuccess: refresh,

@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner"
 import { formatDate, formatDateRange } from "@/lib/formatting"
 import { ORDER_STATUS_LABEL, ORDER_TYPE_META } from "@/domain/status"
+import { DEFAULT_DEPTH_CM, DEFAULT_HEIGHT_CM, formatDimensions } from "@/domain/dimensions"
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -81,7 +82,7 @@ function BoxQuickView({ box, scanned, onOpen }: { box: Box; scanned: string; onO
             {f.value}
           </Row>
         ))}
-        <Row label="Size">{`${sizeName(box.size)}${box.lengthCm ? ` (${box.lengthCm} cm)` : ""}`}</Row>
+        <Row label="Size">{`${sizeName(box.size)}${box.lengthCm ? ` (${formatDimensions(box.lengthCm, box.heightCm ?? DEFAULT_HEIGHT_CM, box.depthCm ?? DEFAULT_DEPTH_CM)})` : ""}`}</Row>
         <Row label="Filed">{formatDateRange(box.filingDateFrom, box.filingDateTo)}</Row>
         <Row label="Department / reference">{[box.department, box.reference].filter(Boolean).join(" · ")}</Row>
         <Row label="Destroy after">{box.destroyAfter ? formatDate(box.destroyAfter) : ""}</Row>

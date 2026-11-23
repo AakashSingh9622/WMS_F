@@ -23,6 +23,7 @@ import { LOAN_TYPES } from "@/domain/loan-type"
 import { REQUEST_CHANNELS } from "@/domain/request-channel"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useClientContacts } from "@/hooks/useClientCard"
+import { toDateTimeLocal } from "@/lib/formatting"
 import { projectIdOf, useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 
 const PAGE_SIZE = 25
@@ -44,6 +45,13 @@ export function RequestRecordsScreen() {
   const [contactEmail, setContactEmail] = useState("")
   const [contactName, setContactName] = useState("")
   const [notes, setNotes] = useState("")
+  // Item 4 (Docbox "Crear petición"): request date, Requested / Lent (+ issue date "Fecha Salida"), Nro. Pedido, Expurgo.
+  // An untouched date means "now" (the server uses its own clock), so a slow form never writes a spurious "date set" into the history.
+  const [requestDate, setRequestDate] = useState("")
+  const [lent, setLent] = useState(false)
+  const [issueDate, setIssueDate] = useState("")
+  const [orderNumber, setOrderNumber] = useState("")
+  const [expurgo, setExpurgo] = useState(false)
   const [done, setDone] = useState<RecordRequest | null>(null)
 
   const client = clients?.find((c) => c.ClientId === clientId)
@@ -99,7 +107,21 @@ export function RequestRecordsScreen() {
 
   const tooMany = chosen.size > MAX_RECORDS
   const needsContact = contacts.length > 0 && !contactEmail
-  const canSend = !!client && chosen.size > 0 && !tooMany && !needsContact && !createRequest.isPending
+  const nowLocal = toDateTimeLocal(new Date())
+  const requestShown = requestDate || nowLocal
+  const issueShown = issueDate || nowLocal
+  const dateProblem = !requestShown
+    ? "Choose the request date."
+    : requestShown > nowLocal
+      ? "The request date can't be in the future."
+      : lent && !issueShown
+        ? "Choose the issue date (Fecha Salida)."
+        : lent && issueShown < requestShown
+          ? "The issue date can't be before the request date."
+          : lent && issueShown > nowLocal
+            ? "The issue date can't be in the future."
+            : ""
+  const canSend = !!client && chosen.size > 0 && !tooMany && !needsContact && !dateProblem && !createRequest.isPending
 
   const send = () => {
     if (!client) return
@@ -112,13 +134,23 @@ export function RequestRecordsScreen() {
         contactEmail: contactEmail || undefined,
         contactName: contactName || undefined,
         notes: notes.trim() || undefined,
+        requestDate: requestDate ? new Date(requestDate).toISOString() : undefined,
+        status: lent ? "delivered" : undefined,
+        issueDate: lent && issueDate ? new Date(issueDate).toISOString() : undefined,
+        orderNumber: orderNumber.trim() || undefined,
+        expurgo: expurgo || undefined,
       },
       {
         onSuccess: (request) => {
           setDone(request)
           setChosen(new Map())
           setNotes("")
-          toast.success(`${request.requestNumber}: ${request.recordCount} record${request.recordCount === 1 ? "" : "s"} requested.`)
+          setRequestDate("")
+          setLent(false)
+          setIssueDate("")
+          setOrderNumber("")
+          setExpurgo(false)
+          toast.success(`${request.requestNumber}: ${request.recordCount} record${request.recordCount === 1 ? "" : "s"} ${request.status === "delivered" ? "lent" : "requested"}.`)
         },
         onError: (err) => toast.error(err instanceof Error ? err.message : "The request failed"),
       },
@@ -137,7 +169,7 @@ export function RequestRecordsScreen() {
         <Card>
           <CardContent className="pt-6">
             <p className="font-medium">
-              {done.requestNumber} created — {done.recordCount} record{done.recordCount === 1 ? "" : "s"} on loan for {done.clientName}.
+              {done.requestNumber} created — {done.recordCount} record{done.recordCount === 1 ? "" : "s"} {done.kind === "digital" ? "requested" : done.status === "delivered" ? "lent (delivered)" : "on loan"} for {done.clientName}.
             </p>
             <p className="text-muted-foreground text-sm">
               Internal codes: {(done.lines ?? []).map((l) => l.internalCode).join(", ")}. You can request more below.
@@ -269,7 +301,7 @@ export function RequestRecordsScreen() {
         <Card>
           <CardHeader>
             <CardTitle>3. Request details</CardTitle>
-            <CardDescription>Who asked, how fast, and how they asked.</CardDescription>
+            <CardDescription>Who asked, when, how fast, how they asked — and whether the records go out now.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <Field>
@@ -337,13 +369,48 @@ export function RequestRecordsScreen() {
                 </SelectContent>
               </Select>
             </Field>
+            <Field>
+              <FieldLabel htmlFor="rq-date">Request date</FieldLabel>
+              <Input id="rq-date" type="datetime-local" max={nowLocal} value={requestShown} onChange={(e) => setRequestDate(e.target.value)} />
+              <p className="text-muted-foreground text-xs">When the client asked. Change it to enter an earlier request.</p>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="rq-status">Status</FieldLabel>
+              <Select value={lent ? "delivered" : "requested"} onValueChange={(v) => setLent(v === "delivered")}>
+                <SelectTrigger id="rq-status">
+                  <SelectValue getLabel={(v) => (v === "delivered" ? "Lent (P) — already delivered" : "Requested (S)")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="requested">Requested (S)</SelectItem>
+                  <SelectItem value="delivered">Lent (P) — already delivered</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            {lent && (
+              <Field>
+                <FieldLabel htmlFor="rq-issue">Issue date (Fecha Salida)</FieldLabel>
+                <Input id="rq-issue" type="datetime-local" min={requestShown} max={nowLocal} value={issueShown} onChange={(e) => setIssueDate(e.target.value)} />
+              </Field>
+            )}
+            <Field>
+              <FieldLabel htmlFor="rq-order">Order number (Nro. Pedido)</FieldLabel>
+              <Input id="rq-order" maxLength={50} value={orderNumber} onChange={(e) => setOrderNumber(e.target.value)} placeholder="The client's own order number" />
+            </Field>
+            <label htmlFor="rq-expurgo" className="flex items-start gap-2 text-sm sm:col-span-2">
+              <Checkbox id="rq-expurgo" checked={expurgo} onCheckedChange={(v) => setExpurgo(v === true)} className="mt-0.5" />
+              <span>
+                Expurgo — these records are intended for destruction
+                <span className="text-muted-foreground block text-xs">Information only: nothing is destroyed, and the Expurgo-by-file approval is not involved.</span>
+              </span>
+            </label>
             <Field className="sm:col-span-2">
               <FieldLabel htmlFor="rq-notes">Notes</FieldLabel>
               <Textarea id="rq-notes" rows={2} maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} />
             </Field>
+            {dateProblem && <p className="text-destructive text-sm sm:col-span-2">{dateProblem}</p>}
             <div className="flex items-center gap-3 sm:col-span-2">
               <Button onClick={send} disabled={!canSend}>
-                {createRequest.isPending ? "Requesting…" : `Request ${chosen.size || ""} record${chosen.size === 1 ? "" : "s"}`.replace("  ", " ")}
+                {createRequest.isPending ? (lent ? "Lending…" : "Requesting…") : `${lent ? "Lend" : "Request"} ${chosen.size || ""} record${chosen.size === 1 ? "" : "s"}`.replace("  ", " ")}
               </Button>
               {needsContact && <span className="text-muted-foreground text-sm">Choose the contact who asked.</span>}
             </div>

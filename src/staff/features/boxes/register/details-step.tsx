@@ -4,7 +4,7 @@ import { formatDate, formatDateRange, todayISO } from "@/lib/formatting"
 import { useState } from "react"
 import { toast } from "sonner"
 
-import { useBoxLengths, useBoxSizeName, useBoxSizes } from "@/api/settings"
+import { useBoxSizeName, useBoxSizes, useBoxVolumes } from "@/api/settings"
 import { useSites } from "@/api/sites"
 import { useWarehouses } from "@/api/warehouses"
 import { useCustomFields } from "@/api/customFields"
@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { formatLength } from "@/domain/dimensions"
+import { formatDimensions, formatVolume } from "@/domain/dimensions"
 import type { Box, BoxSize } from "@/api/types"
 import { RetentionCategoryField } from "@/staff/features/boxes/retention-category-field"
 
@@ -368,9 +368,12 @@ function DetailsForm({
   orderHint?: string
 }) {
   const { data: clients } = useGetClientsWithDetailsQuery()
-  const lengths = useBoxLengths()
   const sizes = useBoxSizes()
   const sizeName = useBoxSizeName()
+  const sizeText = (code: string) => {
+    const s = sizes.find((x) => x.code === code)
+    return s ? `${s.name} (${formatDimensions(s.lengthCm, s.heightCm, s.depthCm)})` : sizeName(code)
+  }
   const expediente = useExpedienteChoice(draft.clientId, draft.expedienteId)
   return (
     <div className="space-y-4">
@@ -454,7 +457,7 @@ function DetailsForm({
             disabled={!!clientSizeLock}
           >
             <SelectTrigger id="size">
-              <SelectValue getLabel={(v) => `${sizeName(v)} (${lengths[v] ?? "?"} cm)`} />
+              <SelectValue getLabel={(v) => sizeText(v)} />
             </SelectTrigger>
             <SelectContent>
               {/* sizes in use (Settings → Box sizes); a retired one only if this batch already has it */}
@@ -462,7 +465,7 @@ function DetailsForm({
                 .filter((s) => s.active || s.code === draft.size)
                 .map((s) => (
                   <SelectItem key={s.code} value={s.code}>
-                    {s.name} ({s.lengthCm} cm)
+                    {sizeText(s.code)}
                   </SelectItem>
                 ))}
             </SelectContent>
@@ -580,9 +583,9 @@ function SummaryPanel({
   error: string | null
   children: React.ReactNode
 }) {
-  const lengths = useBoxLengths()
+  const volumes = useBoxVolumes()
   const sizeName = useBoxSizeName()
-  const perBox = lengths[draft.size] ?? lengths.standard
+  const perBox = volumes[draft.size] ?? volumes.standard
   return (
     <aside className="space-y-4 lg:sticky lg:top-0">
       <Card>
@@ -593,7 +596,7 @@ function SummaryPanel({
           <dl className="divide-y border-y">
             <SummaryRow label="Client" value={clientName} />
             <SummaryRow label="Boxes" value={`${draft.quantity} × ${sizeName(draft.size)}`} />
-            <SummaryRow label="Shelf space" value={formatLength(perBox * draft.quantity)} />
+            <SummaryRow label="Shelf space" value={formatVolume(perBox * draft.quantity)} />
             <SummaryRow
               label="Filed"
               value={draft.filingDateFrom ? formatDateRange(draft.filingDateFrom, draft.filingDateTo || undefined) : ""}

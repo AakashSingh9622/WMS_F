@@ -1,0 +1,9 @@
+Daily Report - 16 Nov 2026
+
+1. Added Custom Fields settings and a Layout Import screen for warehouse setup.
+2. Built box Import and Bulk Move screens with CSV support.
+3. Added a Reports screen and an Exports settings page.
+4. Added order search, box-list import in orders, and a printable witness slip.
+5. Improved the Find-a-box and Move-box screens and the box register details step.
+6. Added a client profile card and updated the client overview and users tabs.
+7. Made UI fixes and updated the delivery note, audit timeline and status stepper.

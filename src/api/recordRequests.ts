@@ -60,6 +60,14 @@ export const recordRequestSchema = z.object({
   contactName: z.string().optional(),
   contactEmail: z.string().optional(),
   notes: z.string().optional(),
+  /** the client's own order number ("Nro. Pedido") */
+  orderNumber: z.string().optional(),
+  /** information only: "these records are intended for destruction" — nothing is destroyed */
+  expurgo: z.boolean().optional(),
+  /** the codes of the files the records belong to (the list only) */
+  files: z.array(z.string()).optional(),
+  /** the request's first internal codes, ascending (the list only; recordCount says how many there are in all) */
+  codes: z.array(z.number()).optional(),
   recordCount: z.number(),
   requestedBy: actorSchema,
   deliveredAt: z.string().optional(),
@@ -81,8 +89,53 @@ export interface RecordRequestSearch {
   source?: "staff" | "portal"
   /** a request number, a client name, or an internal code on the request */
   q?: string
+  /** which date from / to filter: the request date (default), the issue date (Fecha Salida) or the closing date; YYYY-MM-DD, inclusive */
+  dateType?: "request" | "issue" | "closed"
+  from?: string
+  to?: string
+  expedienteId?: string
+  requestChannel?: string
+  loanType?: string
+  /** part of the contact's email or name */
+  requester?: string
+  notes?: string
+  orderNumber?: string
+  expurgo?: boolean
+  /** an internal code on the request */
+  code?: string
+  site?: string
+  warehouse?: string
   page?: number
   pageSize?: number
+}
+
+/** The filters of the list as the query string the server reads; empty ones are left out. */
+export function recordRequestQuery(params: RecordRequestSearch): URLSearchParams {
+  const sp = new URLSearchParams()
+  const put = (key: string, value: string | undefined) => {
+    if (value) sp.set(key, value)
+  }
+  put("clientId", params.clientId)
+  put("kind", params.kind)
+  put("source", params.source)
+  for (const s of params.status ?? []) sp.append("status", s)
+  put("q", params.q)
+  if (params.from || params.to) put("dateType", params.dateType)
+  put("from", params.from)
+  put("to", params.to)
+  put("expedienteId", params.expedienteId)
+  put("requestChannel", params.requestChannel)
+  put("loanType", params.loanType)
+  put("requester", params.requester)
+  put("notes", params.notes)
+  put("orderNumber", params.orderNumber)
+  if (params.expurgo !== undefined) sp.set("expurgo", String(params.expurgo))
+  put("code", params.code)
+  put("site", params.site)
+  put("warehouse", params.warehouse)
+  sp.set("page", String(params.page ?? 1))
+  sp.set("pageSize", String(params.pageSize ?? 25))
+  return sp
 }
 
 const ROOT = "record-requests" as const
@@ -91,17 +144,7 @@ export function useRecordRequests(params: RecordRequestSearch) {
   return useQuery({
     queryKey: [ROOT, "list", params],
     placeholderData: keepPreviousData,
-    queryFn: async () => {
-      const sp = new URLSearchParams()
-      if (params.clientId) sp.set("clientId", params.clientId)
-      if (params.kind) sp.set("kind", params.kind)
-      if (params.source) sp.set("source", params.source)
-      for (const s of params.status ?? []) sp.append("status", s)
-      if (params.q) sp.set("q", params.q)
-      sp.set("page", String(params.page ?? 1))
-      sp.set("pageSize", String(params.pageSize ?? 25))
-      return parse(pageSchema, await apiClient.get(`/record-requests?${sp.toString()}`))
-    },
+    queryFn: async () => parse(pageSchema, await apiClient.get(`/record-requests?${recordRequestQuery(params).toString()}`)),
   })
 }
 
@@ -113,6 +156,14 @@ export interface CreateRecordRequestInput {
   contactName?: string
   contactEmail?: string
   notes?: string
+  /** when the client asked (ISO); leave out for "now". Not in the future. */
+  requestDate?: string
+  /** "delivered" = Lent: born Delivered, with `issueDate` as the delivery date. Default "requested". */
+  status?: "requested" | "delivered"
+  /** Fecha Salida (ISO), only with status "delivered"; leave out for "now" */
+  issueDate?: string
+  orderNumber?: string
+  expurgo?: boolean
 }
 
 /** All records go on loan together, or (409) none do. The records lists are refreshed afterwards. */
@@ -161,6 +212,9 @@ export interface EditRecordRequestInput {
   loanType?: string
   requestChannel?: string
   notes?: string
+  /** "" clears it */
+  orderNumber?: string
+  expurgo?: boolean
   addRecordIds?: string[]
   removeRecordIds?: string[]
   /** why — added to the request's and the records' history */

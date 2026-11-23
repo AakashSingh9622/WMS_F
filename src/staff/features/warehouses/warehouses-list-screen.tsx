@@ -13,6 +13,7 @@ import { useBoxSearch } from "@/api/boxes"
 import { useCreateWarehouse, useWarehouses } from "@/api/warehouses"
 import type { Warehouse } from "@/api/types"
 import { capacityLevel, capacityPercent } from "@/lib/capacity"
+import { formatVolume } from "@/domain/dimensions"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -168,7 +169,7 @@ function Fullness({ warehouse }: { warehouse: Warehouse }) {
       </div>
       <p className="text-muted-foreground flex justify-between text-xs tabular-nums">
         <span>{percent}% full</span>
-        <span>{num(Math.max(0, warehouse.totalCapacity - warehouse.usedCapacity))} cm free</span>
+        <span>{formatVolume(Math.max(0, warehouse.totalCapacity - warehouse.usedCapacity))} free</span>
       </p>
     </div>
   )

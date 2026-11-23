@@ -70,6 +70,8 @@ function Editor({ request, back }: { request: RecordRequest; back: React.ReactNo
   const [channel, setChannel] = useState(request.requestChannel ?? "")
   const [contactEmail, setContactEmail] = useState(request.contactEmail ?? "")
   const [notes, setNotes] = useState(request.notes ?? "")
+  const [orderNumber, setOrderNumber] = useState(request.orderNumber ?? "")
+  const [expurgo, setExpurgo] = useState(request.expurgo ?? false)
   const [reason, setReason] = useState("")
   const [removed, setRemoved] = useState<Set<string>>(new Set()) // record ids marked for removal
   const [added, setAdded] = useState<Map<string, ArchiveRecord>>(new Map())
@@ -105,6 +107,8 @@ function Editor({ request, back }: { request: RecordRequest; back: React.ReactNo
   if (loanType !== request.loanType) body.loanType = loanType
   if (channel !== (request.requestChannel ?? "")) body.requestChannel = channel
   if (notes.trim() !== (request.notes ?? "")) body.notes = notes.trim()
+  if (orderNumber.trim() !== (request.orderNumber ?? "")) body.orderNumber = orderNumber.trim()
+  if (expurgo !== (request.expurgo ?? false)) body.expurgo = expurgo
   if (!fromPortal && contactEmail !== (request.contactEmail ?? "")) {
     body.contactEmail = contactEmail
     body.contactName = contactName ?? ""
@@ -118,6 +122,8 @@ function Editor({ request, back }: { request: RecordRequest; back: React.ReactNo
     body.loanType && "loan type",
     body.requestChannel !== undefined && "how they asked",
     body.notes !== undefined && "notes",
+    body.orderNumber !== undefined && "order number",
+    body.expurgo !== undefined && "expurgo",
     body.contactEmail !== undefined && "contact",
     added.size > 0 && `${added.size} record${added.size === 1 ? "" : "s"} added`,
     removed.size > 0 && `${removed.size} record${removed.size === 1 ? "" : "s"} removed`,
@@ -242,6 +248,17 @@ function Editor({ request, back }: { request: RecordRequest; back: React.ReactNo
               </SelectContent>
             </Select>
           </Field>
+          <Field>
+            <FieldLabel htmlFor="er-order">Order number (Nro. Pedido)</FieldLabel>
+            <Input id="er-order" maxLength={50} value={orderNumber} onChange={(e) => setOrderNumber(e.target.value)} />
+          </Field>
+          <label htmlFor="er-expurgo" className="flex items-start gap-2 self-end pb-2 text-sm">
+            <Checkbox id="er-expurgo" checked={expurgo} onCheckedChange={(v) => setExpurgo(v === true)} className="mt-0.5" />
+            <span>
+              Expurgo — intended for destruction
+              <span className="text-muted-foreground block text-xs">Information only: nothing is destroyed.</span>
+            </span>
+          </label>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="er-notes">Notes</FieldLabel>
             <Textarea id="er-notes" rows={2} maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} />

@@ -59,6 +59,12 @@ export function RecordDeliveryNoteDocument({ requestId }: { requestId: string })
             <dd className="font-medium">{requestChannelLabel(request.requestChannel)}</dd>
           </div>
         )}
+        {request.orderNumber && (
+          <div className="flex gap-2">
+            <dt className="text-black/60">Order number</dt>
+            <dd className="font-medium">{request.orderNumber}</dd>
+          </div>
+        )}
       </dl>
 
       <table className="w-full border-collapse text-xs">
