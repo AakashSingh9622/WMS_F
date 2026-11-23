@@ -126,7 +126,10 @@ box sizes (Settings → Box sizes) have `lengthCm/heightCm/depthCm`, and a regis
 `volumeCm3` (`boxVolume()`, `src/domain/dimensions.ts`, mirrored in the backend's `src/utils/dimensions.js`; change
 both together). Show volumes with `formatVolume` (litres / m³), never raw cm³. The wire param `needCm` of
 `/locations/resolve` is historic — it carries cm³. Existing data was migrated with height = depth = 50 cm
-(`test/prisma/sql/cell-volume.sql`, run once) so old boxes still fit exactly where they did. `src/domain/slotSuggestion.ts` + the MSW location mocks still use the old unit model but
+(`test/prisma/sql/cell-volume.sql`, run once) so old boxes still fit exactly where they did.
+Shelves may differ in size ("The size of each shelf varies"): `Rack.shelfSizes` (JSON, one size per shelf, row 1 = bottom;
+NULL = all shelves use the cell size). The API always returns `rack.shelves` + `variesByShelf`; read them through
+`rackShelves(rack)`. The module page's "Front view" (`rack-elevation.tsx`) draws the module to scale from them. `src/domain/slotSuggestion.ts` + the MSW location mocks still use the old unit model but
 are dead code now that Warehouse/Rack/Slot go to the real backend.
 
 Box sizes (Sprint 11) are a list, not an enum: `Box.size` is a size code (`standard`, `large`, or one an admin added in

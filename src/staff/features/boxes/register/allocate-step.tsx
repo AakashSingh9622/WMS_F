@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { useAllocateBoxes, useBoxSearch, useSuggestSlots } from "@/api/boxes"
@@ -8,11 +8,21 @@ import { StoredLocation } from "@/components/location-path"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ChooseLocation } from "@/staff/features/warehouses/choose-location"
+import { ChooseLocation, type PickedPlace } from "@/staff/features/warehouses/choose-location"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { boxVolume, formatVolume } from "@/domain/dimensions"
 import { locationText } from "@/domain/location"
 import type { Box, LocationPath, Slot } from "@/api/types"
 import { cn } from "@/lib/utils"
+
+/** A filing waiting for the user to confirm it (so a misclick never files boxes). */
+interface PendingFiling {
+  toPlace: Box[]
+  slotId: string
+  where: { path: LocationPath } | { place: PickedPlace }
+  /** Resolves when the dialog is answered, so the position picker refreshes only after the boxes moved. */
+  done: () => void
+}
 
 /** Total space (cm³) these boxes take in a cell. */
 function unitsFor(boxes: Box[]): number {
@@ -64,11 +74,23 @@ export function AllocateStep({
     return taken
   }
 
-  async function runAllocation(toPlace: Box[], slotId: string) {
+  const [pending, setPending] = useState<PendingFiling | null>(null)
+
+  /** Asks first; files only once the user confirms. Resolves when the dialog is closed either way. */
+  function confirmFiling(toPlace: Box[], slotId: string, where: PendingFiling["where"]): Promise<void> {
     if (toPlace.length === 0) {
       toast.error("That position doesn't have room for any remaining box")
-      return
+      return Promise.resolve()
     }
+    return new Promise((resolve) => setPending({ toPlace, slotId, where, done: resolve }))
+  }
+
+  function closePending() {
+    pending?.done()
+    setPending(null)
+  }
+
+  async function runAllocation(toPlace: Box[], slotId: string) {
     try {
       const updated = await allocate.mutateAsync({ allocations: toPlace.map((b) => ({ boxId: b.id, slotId })) })
       onPlaced(updated)
@@ -79,13 +101,13 @@ export function AllocateStep({
   }
 
   /** A suggestion was scored to fit the *entire* current `remaining` batch — place all of it there. */
-  function placeSuggestion(slotId: string) {
-    void runAllocation(remaining, slotId)
+  function placeSuggestion(slotId: string, path: LocationPath) {
+    void confirmFiling(remaining, slotId, { path })
   }
 
   /** A position picked by code or in the grid: it may only fit part of the remaining batch — fill what fits. */
-  function handleSlotClick(slot: Slot) {
-    return runAllocation(takeForCapacity(slot.capacity - slot.used), slot.id)
+  function handleSlotClick(slot: Slot, place: PickedPlace) {
+    return confirmFiling(takeForCapacity(slot.capacity - slot.used), slot.id, { place })
   }
 
   const percent = boxes.length ? Math.round((filedCount / boxes.length) * 100) : 0
@@ -125,7 +147,9 @@ export function AllocateStep({
                       size="sm"
                       variant="outline"
                       disabled={allocate.isPending}
-                      onClick={() => void runAllocation(remaining, lastBox.slotId as string)}
+                      onClick={() =>
+                        void confirmFiling(remaining, lastBox.slotId as string, { path: lastBox.locationPath as LocationPath })
+                      }
                     >
                       Use the same place
                     </Button>
@@ -166,7 +190,7 @@ export function AllocateStep({
                         size="sm"
                         className="mt-auto w-fit"
                         disabled={allocate.isPending}
-                        onClick={() => placeSuggestion(s.slotId)}
+                        onClick={() => placeSuggestion(s.slotId, s.locationPath)}
                       >
                         Use this position
                       </Button>
@@ -184,6 +208,18 @@ export function AllocateStep({
           </>
         )}
       </div>
+
+      {pending && (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => !open && closePending()}
+          title={`File ${pending.toPlace.length === 1 ? "this box" : `these ${pending.toPlace.length} boxes`} here?`}
+          description={<FilingSummary pending={pending} remaining={remaining.length} />}
+          confirmLabel={`File ${pending.toPlace.length === 1 ? "box" : `${pending.toPlace.length} boxes`}`}
+          // the dialog closes itself (onOpenChange(false)) once this finishes
+          onConfirm={() => runAllocation(pending.toPlace, pending.slotId)}
+        />
+      )}
 
       <aside className="space-y-4 xl:sticky xl:top-0">
         <Card>
@@ -228,5 +264,42 @@ export function AllocateStep({
         </Card>
       </aside>
     </div>
+  )
+}
+
+/** What the confirmation says: where, which boxes, and what happens next. */
+function FilingSummary({ pending, remaining }: { pending: PendingFiling; remaining: number }) {
+  const count = pending.toPlace.length
+  const left = remaining - count
+  return (
+    <span className="block space-y-3">
+      <span className="bg-muted block rounded-md px-3 py-2">
+        {"path" in pending.where ? (
+          <StoredLocation path={pending.where.path} className="text-foreground text-sm font-medium" />
+        ) : (
+          <span className="text-foreground block text-sm">
+            <span className="font-medium">
+              {pending.where.place.module ?? "Module"} · shelf {pending.where.place.shelf} · position {pending.where.place.position}
+            </span>
+            <span className="text-muted-foreground block font-mono text-xs">{pending.where.place.code}</span>
+          </span>
+        )}
+      </span>
+      <span className="block">
+        {count === 1 ? "Box " : `${count} boxes: `}
+        <span className="text-foreground font-mono text-xs">
+          {pending.toPlace
+            .slice(0, 12)
+            .map((b) => b.boxNumber)
+            .join(", ")}
+          {count > 12 && ` and ${count - 12} more`}
+        </span>
+      </span>
+      <span className="block">
+        {left > 0
+          ? `Only ${count} of the ${remaining} waiting box${remaining === 1 ? "" : "es"} fit here — the other ${left} stay waiting for another position.`
+          : "This files the last box of the batch, then shows the summary."}
+      </span>
+    </span>
   )
 }

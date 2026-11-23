@@ -11,6 +11,7 @@ import { useBoxSizeName } from "@/api/settings"
 import { shelfAndPosition } from "@/domain/location"
 import { AuditTimeline } from "@/components/audit-timeline"
 import { Skeleton } from "@/components/ui/skeleton"
+import { BoxPlacement } from "@/staff/features/boxes/box-placement"
 
 function Field({ label, value, href }: { label: string; value?: string | null; href?: string }) {
   return (
@@ -118,19 +119,24 @@ export function BoxOverviewTab({ boxId }: { boxId: string }) {
             <Field label="Container type" value={box.containerType} />
           </dl>
         </section>
+
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Recent activity</h2>
+            <Link
+              href={`/app/boxes/${boxId}/history`}
+              className="text-primary text-xs underline-offset-2 hover:underline"
+            >
+              View all
+            </Link>
+          </div>
+          <AuditTimeline events={audit?.items ?? []} orderHref={(id) => `/app/orders/${id}`} />
+        </section>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Recent activity</h2>
-          <Link
-            href={`/app/boxes/${boxId}/history`}
-            className="text-primary text-xs underline-offset-2 hover:underline"
-          >
-            View all
-          </Link>
-        </div>
-        <AuditTimeline events={audit?.items ?? []} orderHref={(id) => `/app/orders/${id}`} />
+      {/* where the box stands, beside the details; stays in view while the details scroll */}
+      <div className="lg:sticky lg:top-0 lg:self-start">
+        <BoxPlacement box={box} />
       </div>
     </div>
   )

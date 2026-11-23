@@ -235,6 +235,13 @@ export function useRackSearch(text: string) {
   })
 }
 
+/** One shelf's size as typed, in the request's `lengthUnit`. */
+export interface ShelfSizeInput {
+  length: number
+  height: number
+  depth: number
+}
+
 interface CreateRackInput {
   warehouseId: string
   code: string
@@ -242,9 +249,11 @@ interface CreateRackInput {
   rows: number
   columns: number
   /** Length, height and depth of ONE cell (row × column) in the unit below; the backend stores whole centimetres. */
-  cellLength: number
-  cellHeight: number
-  cellDepth: number
+  cellLength?: number
+  cellHeight?: number
+  cellDepth?: number
+  /** The size of each shelf varies: one entry per shelf, bottom first (then rows = its length, cell* aren't sent). */
+  shelves?: ShelfSizeInput[]
   lengthUnit: "cm" | "ft"
   zoneId?: string
   aisleId?: string
@@ -271,6 +280,8 @@ interface UpdateRackInput {
   cellLength?: number
   cellHeight?: number
   cellDepth?: number
+  /** One size per shelf (exactly one per shelf); replaces cellLength / cellHeight / cellDepth. */
+  shelves?: ShelfSizeInput[]
   lengthUnit?: "cm" | "ft"
   label?: string
   /** null = take the rack out of its zone / aisle. An aisle decides the zone. */
@@ -288,6 +299,7 @@ export function useUpdateRack() {
       cellLength,
       cellHeight,
       cellDepth,
+      shelves,
       lengthUnit,
       label,
       zoneId,
@@ -295,7 +307,16 @@ export function useUpdateRack() {
     }: UpdateRackInput): Promise<Rack> =>
       parse(
         rackSchema,
-        await apiClient.patch(`/racks/${rackId}`, { cellLength, cellHeight, cellDepth, lengthUnit, label, zoneId, aisleId }),
+        await apiClient.patch(`/racks/${rackId}`, {
+          cellLength,
+          cellHeight,
+          cellDepth,
+          shelves,
+          lengthUnit,
+          label,
+          zoneId,
+          aisleId,
+        }),
       ),
     // a new zone / aisle also changes the stored location of the boxes in the rack
     onSuccess: (_rack, variables) => invalidateLayout(queryClient, variables.warehouseId),

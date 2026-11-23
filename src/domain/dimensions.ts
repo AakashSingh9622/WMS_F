@@ -75,6 +75,31 @@ export function formatCubicFeet(cm3: number): string {
   return `${Number((cm3 / CM3_PER_CUBIC_FOOT).toFixed(2)).toLocaleString("en-GB")} ft³`
 }
 
+/** One shelf of a module: its row (1 = bottom) and the size of each of its positions, in cm. */
+export interface ShelfSize {
+  row: number
+  lengthCm: number
+  heightCm: number
+  depthCm: number
+}
+
+/** Every shelf of a rack, bottom first — from `rack.shelves`, or the cell size repeated (older API responses). */
+export function rackShelves(rack: {
+  rows: number
+  cellLengthCm: number
+  cellHeightCm: number
+  cellDepthCm: number
+  shelves?: ShelfSize[]
+}): ShelfSize[] {
+  if (rack.shelves?.length === rack.rows) return rack.shelves
+  return Array.from({ length: rack.rows }, (_, i) => ({
+    row: i + 1,
+    lengthCm: rack.cellLengthCm,
+    heightCm: rack.cellHeightCm,
+    depthCm: rack.cellDepthCm,
+  }))
+}
+
 /** Result of validating the three fields of a size form (each a text input, in `unit`). */
 export type DimensionCheck = { ok: true; length: number; height: number; depth: number } | { ok: false; error: string }
 

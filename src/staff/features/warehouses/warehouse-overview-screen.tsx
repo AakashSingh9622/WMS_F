@@ -15,7 +15,7 @@ import { CapacityBar } from "@/components/capacity-bar"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { capacityLevel } from "@/lib/capacity"
 import { type LengthUnit } from "@/domain/dimensions"
-import { CellSizeFields, EMPTY_CELL_SIZE, checkCellSize, type CellSize } from "./cell-size-fields"
+import { CellSizeFields, EMPTY_MODULE_SIZE, checkModuleSize, moduleSizeRequest, type ModuleSize } from "./cell-size-fields"
 import { aisleTitle } from "@/domain/location"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -144,13 +144,14 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
   const [label, setLabel] = useState("")
   const [rows, setRows] = useState("4")
   const [columns, setColumns] = useState("6")
-  const [cellSize, setCellSize] = useState<CellSize>(EMPTY_CELL_SIZE)
+  const [moduleSize, setModuleSize] = useState<ModuleSize>(EMPTY_MODULE_SIZE)
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>("ft")
   const [placement, setPlacement] = useState({ zoneId: "", aisleId: "" })
   const createRack = useCreateRack()
 
-  const sizeCheck = checkCellSize(cellSize, lengthUnit)
-  const cellCount = (Number(rows) || 0) * (Number(columns) || 0)
+  const shelfCount = Math.min(Math.max(Math.floor(Number(rows)) || 0, 0), 100)
+  const columnCount = Math.max(Math.floor(Number(columns)) || 0, 0)
+  const sizeCheck = checkModuleSize(moduleSize, lengthUnit, shelfCount)
 
   async function submit() {
     try {
@@ -158,11 +159,9 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
         warehouseId,
         code,
         label,
-        rows: Number(rows) || 1,
-        columns: Number(columns) || 1,
-        cellLength: Number(cellSize.length),
-        cellHeight: Number(cellSize.height),
-        cellDepth: Number(cellSize.depth),
+        rows: shelfCount || 1,
+        columns: columnCount || 1,
+        ...moduleSizeRequest(moduleSize, shelfCount),
         lengthUnit,
         zoneId: placement.zoneId || undefined,
         aisleId: placement.aisleId || undefined,
@@ -171,7 +170,7 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
       setOpen(false)
       setCode("")
       setLabel("")
-      setCellSize(EMPTY_CELL_SIZE)
+      setModuleSize(EMPTY_MODULE_SIZE)
     } catch (err) {
       onError(err)
     }
@@ -204,7 +203,7 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
           />
           <Field>
             <FieldLabel htmlFor="rack-rows">Shelves (rows)</FieldLabel>
-            <Input id="rack-rows" type="number" min={1} value={rows} onChange={(e) => setRows(e.target.value)} />
+            <Input id="rack-rows" type="number" min={1} max={100} value={rows} onChange={(e) => setRows(e.target.value)} />
           </Field>
           <Field>
             <FieldLabel htmlFor="rack-columns">Number of columns per shelf</FieldLabel>
@@ -218,15 +217,16 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
           </Field>
           <CellSizeFields
             idPrefix="rack-cell"
-            size={cellSize}
+            size={moduleSize}
             unit={lengthUnit}
-            onSizeChange={setCellSize}
+            onSizeChange={setModuleSize}
             onUnitChange={setLengthUnit}
-            cellCount={cellCount}
+            shelfCount={shelfCount}
+            columns={columnCount}
           />
         </FieldGroup>
         <DialogFooter>
-          <Button onClick={submit} disabled={!code || !label || !sizeCheck.ok || createRack.isPending}>
+          <Button onClick={submit} disabled={!code || !label || shelfCount < 1 || columnCount < 1 || !sizeCheck.ok || createRack.isPending}>
             {createRack.isPending ? "Adding…" : "Add module"}
           </Button>
         </DialogFooter>

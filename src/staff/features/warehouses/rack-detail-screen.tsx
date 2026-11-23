@@ -22,12 +22,20 @@ import {
 } from "@/api/warehouses"
 import type { RackRowStats } from "@/api/warehouses"
 import type { Box, Rack, Slot } from "@/api/types"
-import { CM_PER_FOOT, formatCubicFeet, formatDimensions, formatVolume, volumeParts, type LengthUnit } from "@/domain/dimensions"
-import { CellSizeFields, checkCellSize, type CellSize } from "@/staff/features/warehouses/cell-size-fields"
+import { checkDimensions, formatCubicFeet, formatVolume, rackShelves, volumeParts, type LengthUnit } from "@/domain/dimensions"
+import {
+  CellSizeFields,
+  checkModuleSize,
+  fitModuleSize,
+  moduleSizeFromShelves,
+  moduleSizeRequest,
+  type ModuleSize,
+} from "@/staff/features/warehouses/cell-size-fields"
 import { capacityLevel, capacityPercent } from "@/lib/capacity"
 import { LOCKED_SLOT_STATUSES, SLOT_LOCK_LABEL, isLockedSlot, type SlotLock } from "@/domain/status"
 import { aisleTitle, shelfCode } from "@/domain/location"
 import { RackPlacementFields } from "@/staff/features/warehouses/manage-layout-dialog"
+import { RackElevation } from "@/staff/features/warehouses/rack-elevation"
 import { cn } from "@/lib/utils"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -137,6 +145,39 @@ function RowBar({
   )
 }
 
+/** A small two-or-more-way switch (view / units) in a card header. */
+function Segmented<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: T
+  onChange: (value: T) => void
+  options: [T, string][]
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="bg-muted inline-flex rounded-lg p-0.5 text-xs">
+      {options.map(([v, text]) => (
+        <button
+          key={v}
+          type="button"
+          role="radio"
+          aria-checked={value === v}
+          onClick={() => onChange(v)}
+          className={cn(
+            "focus-visible:ring-ring rounded-md px-2.5 py-1 font-medium transition-colors outline-none focus-visible:ring-2",
+            value === v ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function StatCard({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <Card className="[--card-spacing:--spacing(5)] justify-between">
@@ -148,31 +189,37 @@ function StatCard({ label, children }: { label: string; children: React.ReactNod
   )
 }
 
-const rackCellSize = (rack: Rack): CellSize => ({
-  length: String(rack.cellLengthCm),
-  height: String(rack.cellHeightCm),
-  depth: String(rack.cellDepthCm),
-})
+/** The rack's current sizes as form values (cm). */
+const rackModuleSize = (rack: Rack): ModuleSize =>
+  moduleSizeFromShelves(
+    rackShelves(rack),
+    { lengthCm: rack.cellLengthCm, heightCm: rack.cellHeightCm, depthCm: rack.cellDepthCm },
+    Boolean(rack.variesByShelf),
+  )
 
-/** The same physical size written in another unit (feet to 2 decimals). */
-function toUnit(lengthCm: number, heightCm: number, depthCm: number, unit: LengthUnit): CellSize {
-  const conv = (cm: number) => String(unit === "ft" ? Number((cm / CM_PER_FOOT).toFixed(2)) : cm)
-  return { length: conv(lengthCm), height: conv(heightCm), depth: conv(depthCm) }
+/** "L×D×H|…" in whole cm per shelf, plus the mode — to tell whether the form changed anything. */
+function sizeSignature(size: ModuleSize, unit: LengthUnit, shelfCount: number): string | null {
+  const list = size.varies ? fitModuleSize(size, shelfCount).shelves : [size.common]
+  const parts: string[] = []
+  for (const s of list) {
+    const c = checkDimensions(s, unit)
+    if (!c.ok) return null
+    parts.push(`${c.length}x${c.depth}x${c.height}`)
+  }
+  return `${size.varies ? "each" : "all"}:${parts.join("|")}`
 }
 
 function EditRackDialog({ rack, warehouseId }: { rack: Rack; warehouseId: string }) {
   const [open, setOpen] = useState(false)
   const [label, setLabel] = useState(rack.label)
   const [placement, setPlacement] = useState({ zoneId: rack.zoneId ?? "", aisleId: rack.aisleId ?? "" })
-  const [cellSize, setCellSize] = useState<CellSize>(rackCellSize(rack))
+  const [moduleSize, setModuleSize] = useState<ModuleSize>(rackModuleSize(rack))
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>("cm")
   const updateRack = useUpdateRack()
   const { data: layout } = useWarehouseLayout(open ? warehouseId : "")
 
-  const sizeCheck = checkCellSize(cellSize, lengthUnit)
-  const sizeChanged =
-    sizeCheck.ok &&
-    (sizeCheck.length !== rack.cellLengthCm || sizeCheck.height !== rack.cellHeightCm || sizeCheck.depth !== rack.cellDepthCm)
+  const sizeCheck = checkModuleSize(moduleSize, lengthUnit, rack.rows)
+  const sizeChanged = sizeSignature(moduleSize, lengthUnit, rack.rows) !== sizeSignature(rackModuleSize(rack), "cm", rack.rows)
 
   async function save() {
     try {
@@ -182,12 +229,7 @@ function EditRackDialog({ rack, warehouseId }: { rack: Rack; warehouseId: string
         label: label.trim(),
         zoneId: placement.zoneId || null,
         aisleId: placement.aisleId || null,
-        ...(sizeChanged && {
-          cellLength: Number(cellSize.length),
-          cellHeight: Number(cellSize.height),
-          cellDepth: Number(cellSize.depth),
-          lengthUnit,
-        }),
+        ...(sizeChanged && { ...moduleSizeRequest(moduleSize, rack.rows), lengthUnit }),
       })
       toast.success("Module updated")
       setOpen(false)
@@ -204,7 +246,7 @@ function EditRackDialog({ rack, warehouseId }: { rack: Rack; warehouseId: string
         if (next) {
           setLabel(rack.label)
           setPlacement({ zoneId: rack.zoneId ?? "", aisleId: rack.aisleId ?? "" })
-          setCellSize(rackCellSize(rack))
+          setModuleSize(rackModuleSize(rack))
           setLengthUnit("cm")
         }
       }}
@@ -230,16 +272,20 @@ function EditRackDialog({ rack, warehouseId }: { rack: Rack; warehouseId: string
           />
           <CellSizeFields
             idPrefix="edit-cell"
-            size={cellSize}
+            size={moduleSize}
             unit={lengthUnit}
-            onSizeChange={setCellSize}
-            onUnitChange={(next) => {
-              // switching the unit re-expresses the same physical size, so the numbers don't silently change meaning
-              if (sizeCheck.ok) setCellSize(toUnit(sizeCheck.length, sizeCheck.height, sizeCheck.depth, next))
-              setLengthUnit(next)
-            }}
-            cellCount={rack.rows * rack.columns}
-            changedHint={<> Applies to all {rack.rows * rack.columns} cells of this rack.</>}
+            onSizeChange={setModuleSize}
+            onUnitChange={setLengthUnit}
+            shelfCount={rack.rows}
+            columns={rack.columns}
+            changedHint={
+              <>
+                {" "}
+                {moduleSize.varies
+                  ? `Applies to the ${rack.columns} positions of each shelf.`
+                  : `Applies to all ${rack.rows * rack.columns} cells of this module.`}
+              </>
+            }
           />
         </FieldGroup>
         <DialogFooter>
@@ -406,7 +452,9 @@ function ShelfTools({ rack, warehouseId }: { rack: Rack; warehouseId: string }) 
   const busy = add.isPending || removeLast.isPending || del.isPending
   const [ask, setAsk] = useState<"add" | "remove" | "delete" | null>(null)
   const fail = (err: unknown) => toast.error(err instanceof Error ? err.message : "That didn't work")
-  const cellVolume = rack.cellLengthCm * rack.cellHeightCm * rack.cellDepthCm
+  // the new shelf copies the top one's size (when sizes vary) — the backend does the same
+  const top = rackShelves(rack).at(-1)
+  const cellVolume = top ? top.lengthCm * top.heightCm * top.depthCm : rack.cellLengthCm * rack.cellHeightCm * rack.cellDepthCm
   return (
     <>
       <Button variant="outline" disabled={busy} onClick={() => setAsk("add")}>
@@ -492,6 +540,8 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
   const updateSlot = useUpdateSlot()
 
   const [selectedRowNumber, setSelectedRowNumber] = useState(1)
+  const [view, setView] = useState<"front" | "list">("front")
+  const [drawUnit, setDrawUnit] = useState<LengthUnit>("cm")
 
   const rows = useMemo(() => buildRows(slots ?? [], rowStats ?? []), [slots, rowStats])
   const selectedRow = rows.find((r) => r.row === selectedRowNumber) ?? rows[0]
@@ -553,8 +603,15 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
                 {rack.aisle && <>{aisleTitle(rack.aisle, rack.zone).title} · </>}
                 {!rack.zone && !rack.aisle && <>No floor or aisle · </>}
                 Module code <span className="font-mono">{rack.code}</span> · {rack.rows} shelves × {rack.columns} positions ·{" "}
-                {formatVolume(rack.totalCapacity)} total capacity · each cell{" "}
-                {formatDimensions(rack.cellLengthCm, rack.cellHeightCm, rack.cellDepthCm)} ({formatVolume(rack.cellLengthCm * rack.cellHeightCm * rack.cellDepthCm)})
+                {formatVolume(rack.totalCapacity)} total capacity ·{" "}
+                {rack.variesByShelf ? (
+                  <>shelf sizes vary</>
+                ) : (
+                  <>
+                    each cell {rack.cellLengthCm} × {rack.cellDepthCm} × {rack.cellHeightCm} cm (L × D × H,{" "}
+                    {formatVolume(rack.cellLengthCm * rack.cellHeightCm * rack.cellDepthCm)})
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -640,7 +697,29 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
         <Card className="[--card-spacing:--spacing(5)] lg:col-span-2">
           <CardContent className="flex h-full flex-col gap-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-base font-semibold">Shelves</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-base font-semibold">Shelves</h2>
+                <Segmented
+                  label="Shelves view"
+                  value={view}
+                  onChange={setView}
+                  options={[
+                    ["front", "Front view"],
+                    ["list", "List"],
+                  ]}
+                />
+                {view === "front" && (
+                  <Segmented
+                    label="Units in the drawing"
+                    value={drawUnit}
+                    onChange={setDrawUnit}
+                    options={[
+                      ["cm", "cm"],
+                      ["ft", "ft"],
+                    ]}
+                  />
+                )}
+              </div>
               <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                 <span className="flex items-center gap-1.5">
                   <span className="border-status-hold size-3 rounded-sm border" /> Full
@@ -659,7 +738,6 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
                   </span>
                   Fill: under 75% · 75–90% · over 90%
                 </span>
-                <span className="border-l pl-3">Tick = 1 m</span>
               </div>
             </div>
 
@@ -668,6 +746,17 @@ export function RackDetailScreen({ warehouseId, rackId }: { warehouseId: string;
                 {Array.from({ length: 4 }).map((_, i) => (
                   <Skeleton key={i} className="h-20 w-full" />
                 ))}
+              </div>
+            ) : view === "front" && rack ? (
+              <div className="flex flex-1 items-center justify-center">
+                <RackElevation
+                  shelves={rackShelves(rack)}
+                  columns={rack.columns}
+                  rows={rows}
+                  selectedRow={selectedRow?.row}
+                  onSelectRow={setSelectedRowNumber}
+                  unit={drawUnit}
+                />
               </div>
             ) : (
               <ul className="flex flex-1 flex-col gap-3" aria-label="Shelves">
