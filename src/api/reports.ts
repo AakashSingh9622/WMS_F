@@ -123,3 +123,66 @@ export function useArchiveReport(params: ArchiveFilters & { byExpediente?: strin
     queryFn: async (): Promise<ArchiveReport> => parse(archiveSchema, await apiClient.get(`/reports/archive${query(params)}`)),
   })
 }
+
+/** The four lists of the record-requests report (Docbox "Listado peticiones de registros"). */
+export const RECORD_REQUEST_LISTS = [
+  { value: "lent", label: "Lent", hint: "Original records out on loan: accepted or delivered, not yet returned." },
+  { value: "requested", label: "Requested", hint: "Asked for in the portal and not accepted yet." },
+  { value: "cancelled", label: "Cancelled", hint: "Requests that were cancelled." },
+  { value: "returned", label: "Returned", hint: "Requests whose records are all back." },
+] as const
+export type RecordRequestList = (typeof RECORD_REQUEST_LISTS)[number]["value"]
+
+const recordRequestsSchema = z.object({
+  list: z.string(),
+  rows: z.array(
+    z.object({
+      clientId: z.string(),
+      clientName: z.string(),
+      expedienteCode: z.string().optional(), // only when the report is split by file
+      requests: z.number(),
+      records: z.number(),
+      originalRequests: z.number(),
+      originalRecords: z.number(),
+      digitalRequests: z.number(),
+      digitalRecords: z.number(),
+      normalRequests: z.number(),
+      normalRecords: z.number(),
+      urgentRequests: z.number(),
+      urgentRecords: z.number(),
+      superiorRequests: z.number(),
+      superiorRecords: z.number(),
+      faxRequests: z.number(),
+      faxRecords: z.number(),
+    })
+  ),
+})
+export type RecordRequestsReport = z.infer<typeof recordRequestsSchema>
+
+const recordRequestersSchema = z.array(z.object({ email: z.string(), name: z.string().optional(), requests: z.number() }))
+
+/** Record requests per client for one of the four lists, with the shared filters. */
+export function useRecordRequestsReport(params: {
+  list: RecordRequestList
+  clientId?: string
+  from?: string
+  to?: string
+  expedienteId?: string
+  requester?: string
+  requestChannel?: string
+  loanType?: string
+  byExpediente?: string
+}) {
+  return useQuery({
+    queryKey: ["reports", "record-requests", params],
+    queryFn: async (): Promise<RecordRequestsReport> => parse(recordRequestsSchema, await apiClient.get(`/reports/record-requests${query(params)}`)),
+  })
+}
+
+/** The contacts that have asked for records ("Solicitado por"). */
+export function useRecordRequesters(clientId?: string) {
+  return useQuery({
+    queryKey: ["reports", "record-requesters", clientId ?? ""],
+    queryFn: async () => parse(recordRequestersSchema, await apiClient.get(`/reports/record-requesters${query({ clientId })}`)),
+  })
+}

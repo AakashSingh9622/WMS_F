@@ -3,7 +3,16 @@
 import { useState } from "react"
 
 import { useExpedientes } from "@/api/expedientes"
-import { useArchiveReport, useInterfilingReport, useLoansReport, useRequesters } from "@/api/reports"
+import {
+  RECORD_REQUEST_LISTS,
+  useArchiveReport,
+  useInterfilingReport,
+  useLoansReport,
+  useRecordRequesters,
+  useRecordRequestsReport,
+  useRequesters,
+  type RecordRequestList,
+} from "@/api/reports"
 import { useSites } from "@/api/sites"
 import { useWarehouses } from "@/api/warehouses"
 import { PaginationFooter } from "@/components/data-table"
@@ -19,6 +28,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { LOAN_TYPES } from "@/domain/loan-type"
 import { REQUEST_CHANNELS } from "@/domain/request-channel"
 import { downloadCsv } from "@/lib/csv"
+import { downloadXlsx } from "@/lib/spreadsheet"
 import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 
 const ALL = "__all__"
@@ -96,6 +106,9 @@ export function ReportsScreen() {
   const [loanType, setLoanType] = useState(ALL)
   const [loansByFile, setLoansByFile] = useState(false)
   const [archiveByFile, setArchiveByFile] = useState(false)
+  const [rrList, setRrList] = useState<RecordRequestList>("lent")
+  const [rrRequester, setRrRequester] = useState(ALL)
+  const [rrByFile, setRrByFile] = useState(false)
   const scope = clientId === ALL ? undefined : clientId
   const pick = (v: string) => (v === ALL ? undefined : v)
 
@@ -133,6 +146,31 @@ export function ReportsScreen() {
   const interfiling = useInterfilingReport({ ...archiveFilters, page: interPage, pageSize: INTER_PAGE_SIZE })
   const archive = useArchiveReport({ ...archiveFilters, byExpediente: archiveByFile ? "true" : undefined })
 
+  // Record requests (Docbox "Listado peticiones de registros"): one of four lists, with the client / file / dates / request and loan type above.
+  const { data: recordRequesters } = useRecordRequesters(scope)
+  const recordRequests = useRecordRequestsReport({
+    list: rrList,
+    clientId: scope,
+    from: from || undefined,
+    to: to || undefined,
+    expedienteId: fileId,
+    requester: pick(rrRequester),
+    requestChannel: pick(channel),
+    loanType: pick(loanType),
+    byExpediente: rrByFile ? "true" : undefined,
+  })
+  const rrRows = recordRequests.data?.rows ?? []
+  const rrSum = (key: "requests" | "records" | "originalRequests" | "originalRecords" | "digitalRequests" | "digitalRecords" | "normalRequests" | "normalRecords" | "urgentRequests" | "urgentRecords" | "superiorRequests" | "superiorRecords" | "faxRequests" | "faxRecords") =>
+    rrRows.reduce((n, r) => n + r[key], 0)
+  const rrListInfo = RECORD_REQUEST_LISTS.find((l) => l.value === rrList)!
+  // The same rows for the CSV and the Excel file.
+  const rrTable = (): string[][] => [
+    ["Client", "Client id", ...(rrByFile ? ["File"] : []), "Requests", "Records", "Original requests", "Original records", "Digital requests", "Digital records", "Normal requests", "Normal records", "Urgent requests", "Urgent records", "Superior requests", "Superior records", "Fax requests", "Fax records"],
+    ...rrRows.map((r) =>
+      [r.clientName, r.clientId, ...(rrByFile ? [r.expedienteCode ?? ""] : []), r.requests, r.records, r.originalRequests, r.originalRecords, r.digitalRequests, r.digitalRecords, r.normalRequests, r.normalRecords, r.urgentRequests, r.urgentRecords, r.superiorRequests, r.superiorRecords, r.faxRequests, r.faxRecords].map(String)
+    ),
+  ]
+
   const loanRows = loans.data?.rows ?? []
   const sum = (key: "physicalUrgent" | "physicalNormal" | "physicalSuperior" | "digitalUrgent" | "digitalNormal" | "digitalSuperior" | "fax" | "orders" | "boxes") =>
     loanRows.reduce((n, r) => n + r[key], 0)
@@ -159,6 +197,7 @@ export function ReportsScreen() {
                 setClientId(v ?? ALL)
                 setExpedienteId(ALL)
                 setRequester(ALL)
+                setRrRequester(ALL)
               }}
             >
               <SelectTrigger id="rp-client">
@@ -448,6 +487,104 @@ export function ReportsScreen() {
               <PaginationFooter page={interPage} pageSize={INTER_PAGE_SIZE} total={interfiling.data?.total ?? 0} onPageChange={setInterPage} />
             </>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle className="text-base">Record requests</CardTitle>
+            <CardDescription>
+              Requests for individual records, per client. Pick a list; it uses the client, file, request type and loan type chosen above.
+            </CardDescription>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="outline" size="sm" disabled={rrRows.length === 0} onClick={() => downloadCsv(`record-requests-${rrList}.csv`, rrTable())}>
+              <Download /> CSV
+            </Button>
+            <Button variant="outline" size="sm" disabled={rrRows.length === 0} onClick={() => void downloadXlsx(`record-requests-${rrList}.xlsx`, rrTable(), `Record requests ${rrListInfo.label}`.slice(0, 31))}>
+              <Download /> Excel
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Picker
+              id="rp-rr-list"
+              title="List (Listado)"
+              value={rrList}
+              onChange={(v) => setRrList(v === ALL ? "lent" : (v as RecordRequestList))}
+              options={RECORD_REQUEST_LISTS.map((l) => [l.value, l.label])}
+              allLabel="Lent"
+            />
+            <Picker
+              id="rp-rr-requester"
+              title="Requested by (Solicitado por)"
+              value={rrRequester}
+              onChange={setRrRequester}
+              options={(recordRequesters ?? []).map((r) => [r.email, r.name ? `${r.name} (${r.email})` : r.email])}
+              allLabel="Anyone"
+            />
+          </div>
+          <p className="text-muted-foreground text-xs">{rrListInfo.hint}</p>
+          <SplitSwitch id="rp-rr-split" checked={rrByFile} onChange={setRrByFile} />
+          {recordRequests.isLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : recordRequests.isError ? (
+            <p className="text-destructive text-sm">The list could not be loaded.</p>
+          ) : rrRows.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No record requests match.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Client</TableHead>
+                  {rrByFile && <TableHead>File</TableHead>}
+                  <TableHead className="text-right">Requests</TableHead>
+                  <TableHead className="text-right">Records</TableHead>
+                  <TableHead className="text-right">Original</TableHead>
+                  <TableHead className="text-right">Digital</TableHead>
+                  <TableHead className="text-right">Normal</TableHead>
+                  <TableHead className="text-right">Urgent</TableHead>
+                  <TableHead className="text-right">Superior</TableHead>
+                  <TableHead className="text-right">By fax</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rrRows.map((r) => (
+                  <TableRow key={`${r.clientId}|${r.expedienteCode ?? ""}`}>
+                    <TableCell className="font-medium">{r.clientName}</TableCell>
+                    {rrByFile && <TableCell>{r.expedienteCode ?? "—"}</TableCell>}
+                    <TableCell className="text-right">{r.requests}</TableCell>
+                    <TableCell className="text-right">{r.records}</TableCell>
+                    <TableCell className="text-right">{r.originalRequests} / {r.originalRecords}</TableCell>
+                    <TableCell className="text-right">{r.digitalRequests} / {r.digitalRecords}</TableCell>
+                    <TableCell className="text-right">{r.normalRequests} / {r.normalRecords}</TableCell>
+                    <TableCell className="text-right">{r.urgentRequests} / {r.urgentRecords}</TableCell>
+                    <TableCell className="text-right">{r.superiorRequests} / {r.superiorRecords}</TableCell>
+                    <TableCell className="text-right">{r.faxRequests} / {r.faxRecords}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell colSpan={rrByFile ? 2 : 1}>Total</TableCell>
+                  <TableCell className="text-right">{rrSum("requests")}</TableCell>
+                  <TableCell className="text-right">{rrSum("records")}</TableCell>
+                  <TableCell className="text-right">{rrSum("originalRequests")} / {rrSum("originalRecords")}</TableCell>
+                  <TableCell className="text-right">{rrSum("digitalRequests")} / {rrSum("digitalRecords")}</TableCell>
+                  <TableCell className="text-right">{rrSum("normalRequests")} / {rrSum("normalRecords")}</TableCell>
+                  <TableCell className="text-right">{rrSum("urgentRequests")} / {rrSum("urgentRecords")}</TableCell>
+                  <TableCell className="text-right">{rrSum("superiorRequests")} / {rrSum("superiorRecords")}</TableCell>
+                  <TableCell className="text-right">{rrSum("faxRequests")} / {rrSum("faxRecords")}</TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          )}
+          <p className="text-muted-foreground text-xs">
+            Each cell shows requests / records. The date filter uses the date the request was made (Requested), closed (Returned, Cancelled) or delivered / accepted (Lent). A digital copy that was accepted or delivered is in none of the lists, because the paper never leaves its box.
+            {rrByFile ? " A request with records in two files counts once in each file row, so the file totals can add up to more than the requests." : ""}
+          </p>
         </CardContent>
       </Card>
     </div>
