@@ -9,6 +9,7 @@ import { useCan } from "@/auth/useAuth"
 import { useBoxSizeName, useBoxSizes } from "@/api/settings"
 import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
 import { formatDate, formatMoney, todayISO } from "@/lib/formatting"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Invoice } from "@/components/icons"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
@@ -50,12 +51,15 @@ export function RateCardForm({
   onSaved,
   inline,
   defaultOnly,
+  offerDefault,
 }: {
   from?: RateCard
   forClient?: { id: string; name: string }
   onSaved?: () => void
   inline?: boolean
   defaultOnly?: boolean // only the default card (Settings → Default Rate List)
+  /** shows a "Default Rate Card" button that fills the prices and VAT from the default card in use */
+  offerDefault?: boolean
 }) {
   const [clientId, setClientId] = useState(
     forClient ? forClient.id : from ? (from.clientId ?? DEFAULT_CLIENT) : DEFAULT_CLIENT,
@@ -113,10 +117,69 @@ export function RateCardForm({
     }
   }
 
+  // the default card's prices, fetched fresh: the one in use today, else the latest one
+  const rateCards = useRateCards()
+  const [loadingDefault, setLoadingDefault] = useState(false)
+  async function fillFromDefault() {
+    setLoadingDefault(true)
+    try {
+      const { data, error } = await rateCards.refetch()
+      if (error) throw error
+      const today = todayISO()
+      const defaults = (data ?? [])
+        .filter((c) => !c.clientId)
+        .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))
+      const card =
+        defaults.find((c) => c.effectiveFrom <= today && (!c.effectiveTo || c.effectiveTo >= today)) ?? defaults[0]
+      if (!card) {
+        toast.error("There is no default rate card yet — add one in Settings → Default Rate List")
+        return
+      }
+      setForm(toForm(card.rates))
+      setStorageTyped(
+        Object.fromEntries(sizes.map((s) => [s.code, String(card.rates.storagePerBoxMonth[s.code] ?? "")])),
+      )
+      setTaxRateId(card.taxRateId)
+      toast.success("Filled from the default rate card — check and save")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not load the default rate card")
+    } finally {
+      setLoadingDefault(false)
+    }
+  }
+
+  // Reset: back to how the form opened (the client stays)
+  const [confirmReset, setConfirmReset] = useState(false)
+  function resetForm() {
+    setForm(toForm(from?.rates))
+    setStorageTyped({})
+    setTaxRateId(from?.taxRateId ?? "GB_STANDARD")
+    setEffectiveFrom(todayISO())
+    setNotes("")
+    toast.success("Rate card form reset")
+  }
+
   const saveButton = (
-    <Button onClick={submit} disabled={!effectiveFrom || !pricesOk || create.isPending}>
-      {create.isPending ? "Saving…" : "Save rate card"}
-    </Button>
+    <div className="flex flex-wrap justify-end gap-2">
+      {offerDefault && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setConfirmReset(true)}
+          disabled={loadingDefault || create.isPending}
+        >
+          Reset
+        </Button>
+      )}
+      {offerDefault && (
+        <Button type="button" variant="outline" onClick={fillFromDefault} disabled={loadingDefault || create.isPending}>
+          {loadingDefault ? "Loading…" : "Default Rate Card"}
+        </Button>
+      )}
+      <Button onClick={submit} disabled={!effectiveFrom || !pricesOk || create.isPending}>
+        {create.isPending ? "Saving…" : "Save rate card"}
+      </Button>
+    </div>
   )
 
   return (
@@ -198,6 +261,15 @@ export function RateCardForm({
         </div>
       </FieldGroup>
       {inline ? <div className="mt-4 flex justify-end">{saveButton}</div> : <DialogFooter>{saveButton}</DialogFooter>}
+      <ConfirmDialog
+        open={confirmReset}
+        onOpenChange={setConfirmReset}
+        title="Reset the rate card?"
+        description="Every price you entered is cleared, VAT goes back to Standard and the start date to today."
+        confirmLabel="Reset"
+        destructive
+        onConfirm={resetForm}
+      />
     </>
   )
 }

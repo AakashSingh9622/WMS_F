@@ -4,7 +4,7 @@ import { PackagePlus, Search } from "@/components/icons"
 import { PageHeader } from "@/components/page-header"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useMemo, useState } from "react"
+import { useMemo, useState, useSyncExternalStore } from "react"
 
 import { useCan } from "@/auth/useAuth"
 import { useBoxSearch } from "@/api/boxes"
@@ -12,7 +12,8 @@ import { useCustomFields } from "@/api/customFields"
 import { useExpedientes } from "@/api/expedientes"
 import { useWarehouses } from "@/api/warehouses"
 import { BOX_STATUS_META } from "@/domain/status"
-import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
+import { useGetClientsWithDetailsQuery, useGetFolderClientsQuery } from "@/store/docusoftApi"
+import { getStoredProjectId } from "@/store/docusoftCreds"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { boxStatusSchema, type BoxStatus } from "@/api/types"
 import { useDebounce } from "@/hooks/useDebounce"
@@ -27,6 +28,8 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 
 const PAGE_SIZE = 25
+const noSubscribe = () => () => {}
+const NOT_READ = "__not-read__"
 
 // Docbox "Estado": Archivado (on the shelf), Prestado (with the client), Transito (on its way).
 const STATE_GROUPS = [
@@ -49,8 +52,25 @@ export function FindABoxScreen() {
   const missingOnly = params.missing === "true"
   const page = Math.max(1, Number(params.page) || 1)
 
+  // The Client list: the clients of the default folder (the ProjectId DocuSoft stored at login); every client only
+  // when no folder is stored.
+  // NOT_READ = the first (server / hydration) render, before localStorage is read: nothing is fetched yet, or every
+  // folder's clients and an unfiltered box list would be loaded for a moment.
+  const stored = useSyncExternalStore(noSubscribe, getStoredProjectId, () => NOT_READ)
+  const folderKnown = stored !== NOT_READ
+  const projectId = (folderKnown && Number(stored)) || undefined
+  const folderClients = useGetFolderClientsQuery(projectId ?? 0, { skip: !projectId })
+  const allClients = useGetClientsWithDetailsQuery(undefined, { skip: !folderKnown || !!projectId })
+  const clients = useMemo(
+    () =>
+      projectId
+        ? [...(folderClients.data ?? [])]
+            .map((c) => ({ ClientId: c.ClientID, Client: c.Client }))
+            .sort((a, b) => a.Client.localeCompare(b.Client))
+        : allClients.data,
+    [projectId, folderClients.data, allClients.data],
+  )
   // Search one of a client's own fields (Docbox "Campo / Dato", Like or =): needs the client to know its fields.
-  const { data: clients } = useGetClientsWithDetailsQuery()
   const clientId = params.clientId ?? ""
   const { data: expedientes } = useExpedientes(clientId)
   const expedienteId = expedientes?.some((e) => e.id === params.exp) ? params.exp : undefined
@@ -66,11 +86,18 @@ export function FindABoxScreen() {
   const shelfNo = /^\d+$/.test(params.shelf ?? "") ? Number(params.shelf) : undefined
   const placeFilters = [params.site, params.wh, params.zone, params.aisle, params.module, params.shelf, params.pallet, params.container, params.st, params.grp, params.boxFrom, params.boxTo, params.palletFrom, params.palletTo, params.containerFrom, params.containerTo, ...FIELD_PARAM_KEYS.map((k) => params[k])]
 
-  const { data, isLoading } = useBoxSearch(
+  // With a default folder, boxes of that folder's clients only (until one client is picked) — waits for the list.
+  const folderClientIds = useMemo(
+    () => (projectId && folderClients.data ? folderClients.data.map((c) => c.ClientID) : undefined),
+    [projectId, folderClients.data],
+  )
+  const searchReady = folderKnown && (!!clientId || !projectId || !!folderClientIds)
+  const { data, isLoading: boxesLoading } = useBoxSearch(
     useMemo(
       () => ({
         q: debouncedQ || undefined,
         clientId: clientId || undefined,
+        clientIds: clientId ? undefined : folderClientIds,
         expedienteId,
         cf: conditionsKey === "[]" ? undefined : (JSON.parse(conditionsKey) as FieldCondition[]),
         cfJoin,
@@ -93,9 +120,11 @@ export function FindABoxScreen() {
         page,
         pageSize: PAGE_SIZE,
       }),
-      [debouncedQ, clientId, expedienteId, conditionsKey, cfJoin, includeDestroyed, onHoldOnly, missingOnly, page, statusFilter, group, shelfNo, params.site, params.wh, params.zone, params.aisle, params.module, params.pallet, params.container, params.boxFrom, params.boxTo, params.palletFrom, params.palletTo, params.containerFrom, params.containerTo],
+      [debouncedQ, clientId, folderClientIds, expedienteId, conditionsKey, cfJoin, includeDestroyed, onHoldOnly, missingOnly, page, statusFilter, group, shelfNo, params.site, params.wh, params.zone, params.aisle, params.module, params.pallet, params.container, params.boxFrom, params.boxTo, params.palletFrom, params.palletTo, params.containerFrom, params.containerTo],
     ),
+    { enabled: searchReady },
   )
+  const isLoading = boxesLoading || !folderKnown || (!searchReady && folderClients.isLoading)
 
   function updateQuery(value: string) {
     setQ(value)

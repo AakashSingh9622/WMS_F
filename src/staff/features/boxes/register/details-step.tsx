@@ -21,6 +21,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { formatDimensions, formatVolume } from "@/domain/dimensions"
 import type { Box, BoxSize } from "@/api/types"
 import { RetentionCategoryField } from "@/staff/features/boxes/retention-category-field"
+import {
+  ReferenceUdfSection,
+  referenceUdfProblem,
+  referenceUdfsToSend,
+  useReferenceUdfFields,
+} from "@/staff/features/boxes/register/reference-udf-section"
 
 /** The "nothing chosen" entry of the site / warehouse lists. */
 const NOT_SET = "__not_set__"
@@ -53,6 +59,8 @@ export interface RegisterDraft {
   size: BoxSize
   /** The client's own fields by code ({ C1: "…" }) -- shown for a new batch only. */
   customFields: Record<string, string>
+  /** The client's DocuSoft Reference UDF values by field name -- shown for a new batch only. */
+  referenceUdfs: Record<string, string>
 }
 
 // A function (not a constant) so "today" is the day the form is opened, not the day the app was loaded.
@@ -81,6 +89,7 @@ export const emptyDraft = (): RegisterDraft => ({
   placeShelf: "",
   size: "standard",
   customFields: {},
+  referenceUdfs: {},
 })
 
 /** The form, filled in from a registered batch (all boxes of a batch share these details). */
@@ -110,6 +119,7 @@ function draftFromBoxes(boxes: Box[]): RegisterDraft {
     placeShelf: "",
     size: b.size,
     customFields: {},
+    referenceUdfs: {},
   }
 }
 
@@ -351,6 +361,7 @@ function DetailsForm({
   showCustomFields = false,
   showLocation = false,
   patch,
+  referenceSection,
 }: {
   draft: RegisterDraft
   set: <K extends keyof RegisterDraft>(key: K, value: RegisterDraft[K]) => void
@@ -358,6 +369,8 @@ function DetailsForm({
   patch?: (change: Partial<RegisterDraft>) => void
   /** New batch only: put the boxes on a shelf as they are registered. */
   showLocation?: boolean
+  /** New batch only: the client's DocuSoft Reference UDFs (its own card, after the client's own fields). */
+  referenceSection?: React.ReactNode
   /** New batch only: the correct-batch call can't change a client's own fields. */
   showCustomFields?: boolean
   lockedClientId?: string
@@ -524,6 +537,8 @@ function DetailsForm({
           onChange={(v) => set("customFields", v)}
         />
       )}
+
+      {referenceSection}
 
       <Section
         title="Dates and retention"
@@ -711,10 +726,15 @@ function NewBatch({
   const { data: shownFields } = useCustomFields(draft.clientId, { expedienteId: expediente.id || undefined })
   // The client's own fields marked required must be filled in.
   const missingOwn = (shownFields ?? []).filter((f) => f.required && !(draft.customFields?.[f.code] ?? "").trim()).map((f) => f.name)
+  // The client's DocuSoft Reference UDFs: the mandatory ones must be filled in too.
+  const reference = useReferenceUdfFields(draft.clientId)
+  const referenceValues = draft.referenceUdfs ?? {}
   const problem =
     draftProblem(draft) ??
     (expediente.needed ? "Choose the expediente." : null) ??
-    (missingOwn.length ? `Still needed: ${missingOwn.join(", ")}.` : null)
+    (missingOwn.length ? `Still needed: ${missingOwn.join(", ")}.` : null) ??
+    (reference.isLoading && draft.clientId ? "Loading the client's reference fields…" : null) ??
+    referenceUdfProblem(reference.fields, referenceValues)
   // Only the fields of the chosen expediente: a value typed for another one is dropped.
   const shownCodes = new Set((shownFields ?? []).map((f) => f.code))
   const customToSend = Object.fromEntries(Object.entries(draft.customFields ?? {}).filter(([code]) => shownCodes.has(code)))
@@ -739,6 +759,7 @@ function NewBatch({
         retentionCategory: draft.retentionCategory || undefined,
         expedienteId: expediente.id || undefined,
         customFields: Object.keys(customToSend).length ? customToSend : undefined,
+        referenceUdfs: referenceUdfsToSend(reference.fields, referenceValues),
         palletNo: draft.palletNo || undefined,
         containerNo: draft.containerNo.trim() || undefined,
         containerType: draft.containerType.trim() || undefined,
@@ -766,6 +787,16 @@ function NewBatch({
         showCustomFields
         showLocation
         patch={(change) => onDraftChange({ ...draft, ...change })}
+        referenceSection={
+          <ReferenceUdfSection
+            clientId={draft.clientId}
+            fields={reference.fields}
+            isLoading={reference.isLoading}
+            isError={reference.isError}
+            values={referenceValues}
+            onChange={(v) => onDraftChange({ ...draft, referenceUdfs: v })}
+          />
+        }
       />
       <SummaryPanel draft={draft} clientName={clientName} error={error}>
         <Button type="button" className="w-full" onClick={submit} disabled={createBatch.isPending || !!problem}>
