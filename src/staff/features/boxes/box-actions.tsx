@@ -29,6 +29,11 @@ import { todayISO } from "@/lib/formatting"
 import type { Box } from "@/api/types"
 import { RetentionCategoryField } from "@/staff/features/boxes/retention-category-field"
 import { boxVolume, formatVolume } from "@/domain/dimensions"
+import {
+  ReferenceUdfInput,
+  referenceUdfProblem,
+  useReferenceUdfFields,
+} from "@/staff/features/boxes/register/reference-udf-section"
 
 function onError(err: unknown) {
   toast.error(err instanceof Error ? err.message : "That didn't work")
@@ -57,13 +62,26 @@ function EditDetailsDialog({ box }: { box: Box }) {
       .filter((f) => customValue(f.code) !== String(box.customFields?.[f.code] ?? ""))
       .map((f) => [f.code, customValue(f.code)])
   )
+  // The client's DocuSoft Reference UDFs (fields from DocuSoft, values on the box); only the ones that changed are sent.
+  const refUdfs = useReferenceUdfFields(box.clientId)
+  const [refEdits, setRefEdits] = useState<Record<string, string>>({})
+  const refValue = (name: string) => refEdits[name] ?? box.referenceUdfs?.[name] ?? ""
+  const refChanged = refUdfs.fields.filter((f) => refValue(f.name).trim() !== (box.referenceUdfs?.[f.name] ?? ""))
+  const refChanges = Object.fromEntries(refChanged.map((f) => [f.name, refValue(f.name).trim()]))
+  // a changed field may not be left empty when DocuSoft marks it mandatory, and a number must be a number
+  const refProblem = referenceUdfProblem(refChanged, refChanges)
 
   async function submit() {
+    if (refProblem) {
+      toast.error(refProblem)
+      return
+    }
     try {
       await update.mutateAsync({
         boxId: box.id,
         input: {
           customFields: Object.keys(customChanges).length ? customChanges : undefined,
+          referenceUdfs: Object.keys(refChanges).length ? refChanges : undefined,
           palletNo: palletNo !== (box.palletNo ?? "") ? palletNo : undefined,
           comments: comments.trim() !== (box.comments ?? "") ? comments.trim() : undefined,
           containerNo: containerNo.trim() !== (box.containerNo ?? "") ? containerNo.trim() : undefined,
@@ -169,6 +187,29 @@ function EditDetailsDialog({ box }: { box: Box }) {
             </section>
           )}
 
+          {(refUdfs.isLoading || refUdfs.fields.length > 0) && (
+            <section className="space-y-3 border-t pt-5">
+              <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">Reference UDF</h3>
+              {refUdfs.isLoading ? (
+                <p className="text-muted-foreground text-sm">Loading the client&apos;s reference fields…</p>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {refUdfs.fields.map((f) => (
+                    <ReferenceUdfInput
+                      key={f.id}
+                      idPrefix="edit-ref-udf"
+                      clientId={box.clientId}
+                      field={f}
+                      value={refValue(f.name)}
+                      onChange={(v) => setRefEdits((r) => ({ ...r, [f.name]: v }))}
+                    />
+                  ))}
+                </div>
+              )}
+              {refProblem && <p className="text-destructive text-xs font-medium">{refProblem}</p>}
+            </section>
+          )}
+
           <section className="space-y-3 border-t pt-5">
             <Field>
               <FieldLabel htmlFor="edit-reason">Reason for this change (required)</FieldLabel>
@@ -185,7 +226,7 @@ function EditDetailsDialog({ box }: { box: Box }) {
           <Button variant="outline" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={!reason || update.isPending}>
+          <Button onClick={submit} disabled={!reason || !!refProblem || update.isPending}>
             {update.isPending ? "Saving…" : "Save changes"}
           </Button>
         </DialogFooter>
@@ -373,6 +414,7 @@ function DuplicateBoxDialog({ box }: { box: Box }) {
         destroyAfter: box.destroyAfter,
         retentionCategory: box.retentionCategory,
         customFields: Object.keys(customFields).length ? customFields : undefined,
+        referenceUdfs: box.referenceUdfs,
         palletNo: palletNo.trim() || undefined,
         containerNo: containerNo.trim() || undefined,
         containerType: containerType.trim() || undefined,

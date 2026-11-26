@@ -703,6 +703,7 @@ function RateCardTab({ client }: { client: CreatedClient }) {
         key={saved}
         forClient={{ id: client.id, name: client.name }}
         inline
+        offerDefault
         onSaved={() => setSaved((n) => n + 1)}
       />
     </div>

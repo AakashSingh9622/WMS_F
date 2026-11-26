@@ -9,6 +9,8 @@ import type { Box, BoxSize, BoxStatus, Order, SlotSuggestion } from "@/api/types
 export interface BoxSearchInput {
   q?: string
   clientId?: string
+  /** Any of these clients (ignored when clientId is set); an empty list finds no boxes. */
+  clientIds?: string[]
   /** One of the client's expedientes. */
   expedienteId?: string
   /** Where it is (Docbox Busqueda): site, warehouse (code or name), floor, aisle, module (code or label) — typed text, any letter case. */
@@ -51,6 +53,7 @@ function toSearchParams(input: BoxSearchInput): URLSearchParams {
   const sp = new URLSearchParams()
   if (input.q) sp.set("q", input.q)
   if (input.clientId) sp.set("clientId", input.clientId)
+  else if (input.clientIds) sp.set("clientIds", input.clientIds.join(","))
   if (input.expedienteId) sp.set("expedienteId", input.expedienteId)
   for (const key of ["site", "warehouse", "zone", "aisle", "module", "palletNo", "containerNo", "containerType"] as const) {
     if (input[key]) sp.set(key, input[key] as string)
@@ -130,6 +133,8 @@ export interface CreateBoxesBatchInput {
   destroyAfter?: string
   retentionCategory?: string
   customFields?: Record<string, string>
+  /** The client's DocuSoft Reference UDF values, by field name (same on every box of the batch). */
+  referenceUdfs?: Record<string, string>
   palletNo?: string
   /** Docbox "NºContenedor" / "Tipo Contenedor" (template NCE, TYPECE): free text. */
   containerNo?: string
@@ -335,6 +340,8 @@ export interface UpdateBoxDetailsInput {
   retentionCategory?: string
   /** Only the client's own fields that change, by code; "" clears one. */
   customFields?: Record<string, string>
+  /** Only the DocuSoft Reference UDF values that change, by field name; "" clears one. */
+  referenceUdfs?: Record<string, string>
   palletNo?: string
   /** Docbox "NºContenedor" / "Tipo Contenedor" (template NCE, TYPECE): free text. */
   containerNo?: string

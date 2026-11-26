@@ -276,6 +276,7 @@ export const boxSchema = z.object({
   comments: z.string().optional(), // free-text remarks (Docbox "Observaciones")
   entryDate: z.string().optional(), // the day the box came into the archive (Docbox "Fecha Entrada")
   customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional(), // the client's own fields, by code (C1 …)
+  referenceUdfs: z.record(z.string(), z.string()).optional(), // the client's DocuSoft Reference UDF values, by field name
   labelPrinted: z.boolean(),
   slotId: z.string().optional(),
   // Only from GET /boxes/:id: the module (rack) and warehouse of the box's position, to draw where it stands.

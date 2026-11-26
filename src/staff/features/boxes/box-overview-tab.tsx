@@ -12,6 +12,7 @@ import { shelfAndPosition } from "@/domain/location"
 import { AuditTimeline } from "@/components/audit-timeline"
 import { Skeleton } from "@/components/ui/skeleton"
 import { BoxPlacement } from "@/staff/features/boxes/box-placement"
+import { useReferenceUdfFields } from "@/staff/features/boxes/register/reference-udf-section"
 
 function Field({ label, value, href }: { label: string; value?: string | null; href?: string }) {
   return (
@@ -48,6 +49,18 @@ export function BoxOverviewTab({ boxId }: { boxId: string }) {
     if (raw === undefined || raw === "") return []
     return [{ code: f.code, name: f.name, value: f.fieldType === "date" ? formatDate(String(raw)) : String(raw) }]
   })
+
+  // The client's DocuSoft Reference UDFs (its fields, in DocuSoft's order, "—" when empty), then any value this box
+  // keeps for a field DocuSoft no longer has. Edited with "Edit details".
+  const reference = useReferenceUdfFields(box?.clientId ?? "")
+  const stored = box?.referenceUdfs ?? {}
+  const show = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(v) : v)
+  const referenceRows = [
+    ...reference.fields.map((f) => ({ name: f.name, value: show(stored[f.name]) })),
+    ...Object.entries(stored)
+      .filter(([name]) => !reference.fields.some((f) => f.name === name))
+      .map(([name, value]) => ({ name, value: show(value) })),
+  ]
 
   if (isLoading) return <Skeleton className="h-64 w-full" />
   if (!box) return null
@@ -86,6 +99,17 @@ export function BoxOverviewTab({ boxId }: { boxId: string }) {
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               {customRows.map((f) => (
                 <Field key={f.code} label={f.name} value={f.value} />
+              ))}
+            </dl>
+          </section>
+        )}
+
+        {referenceRows.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold">Reference UDF</h2>
+            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              {referenceRows.map((r) => (
+                <Field key={r.name} label={r.name} value={r.value} />
               ))}
             </dl>
           </section>

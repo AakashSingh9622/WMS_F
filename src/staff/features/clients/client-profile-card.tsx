@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 type Form = Omit<ClientProfile, "clientId" | "deliveryColumns">
 const FIELDS: { key: keyof Form; label: string; wide?: boolean }[] = [
-  { key: "sapCode", label: "SAP / accounting code" },
+  { key: "sapCode", label: "Sage / Accounting Code" },
   { key: "taxId", label: "Tax ID (NIF / VAT)" },
   { key: "address", label: "Postal address", wide: true },
   { key: "postcode", label: "Postcode" },
