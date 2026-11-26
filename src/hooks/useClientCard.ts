@@ -18,6 +18,9 @@ function mergeAddress(a: DocusoftAddress | undefined): string {
   return [a.Add1, a.Add2, a.Add3, a.Town, a.County, a.Country, a.Postcode].filter(Boolean).join(", ")
 }
 
+const hasLines = (a: DocusoftAddress | undefined) =>
+  !!a && [a.Add1, a.Add2, a.Add3, a.Town, a.County, a.Postcode].some((v) => String(v ?? "").trim() !== "")
+
 /**
  * Everything DocuSoft knows about the client the user opened: name, address and contacts. The card and the
  * addresses are fetched once per client (RTK Query cache, kept in the Redux store) — DocuSoft scopes the card
@@ -43,7 +46,16 @@ export function useClientCard(clientId: string) {
   return useMemo(() => {
     const record = card.data?.Table1?.[0]
     const sorted = [...(addresses.data ?? [])].sort((a, b) => Number(a.AddressId) - Number(b.AddressId))
-    const main = sorted.find((a) => a.AddressType === "Main Address") ?? sorted[0]
+    // Main = id 1 / "Main Address" (older saves may say just "Main"); never a Billing / Registered one
+    const main =
+      sorted.find((a) => a.AddressType === "Main Address") ??
+      sorted.find((a) => Number(a.AddressId) === 1) ??
+      sorted.find((a) => ![2, 3].includes(Number(a.AddressId)))
+    // Billing (2) and Registered (3), by id — or by type, as DocuSoft's own page saves them
+    const byKind = (id: number, type: string) =>
+      sorted.find((a) => Number(a.AddressId) === id) ?? sorted.find((a) => a.AddressType === type)
+    const billing = byKind(2, "Billing Address")
+    const registered = byKind(3, "Registered Address")
     const contacts: DocusoftContact[] = card.data?.Table6 ?? []
     const name =
       record?.OriginatorName ||
@@ -52,6 +64,13 @@ export function useClientCard(clientId: string) {
     return {
       name,
       address: mergeAddress(main),
+      mainAddress: main,
+      billingAddress: billing,
+      registeredAddress: registered,
+      // shown only with real lines (a row holding just a country isn't an address)
+      billingText: hasLines(billing) ? mergeAddress(billing) : "",
+      registeredText: hasLines(registered) ? mergeAddress(registered) : "",
+      projectId,
       record,
       contacts,
       needsFolder: projectId === undefined,

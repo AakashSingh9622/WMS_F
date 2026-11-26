@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useGetClientsWithDetailsQuery } from "@/store/docusoftApi"
+import { DocusoftReferenceFieldsCard } from "@/staff/features/settings/docusoft-reference-fields"
 
 const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "That didn't work")
 
@@ -318,6 +319,9 @@ export function CustomFieldsScreen() {
           The extra details each client keeps about its boxes — for example Folder, Subfolder and Contents.
         </p>
       </div>
+
+      {/* DocuSoft's own fields (kept in DocuSoft) — its own folder + client pickers, independent of the client below */}
+      <DocusoftReferenceFieldsCard />
 
       <Field>
         <FieldLabel htmlFor="cf-client">Client</FieldLabel>

@@ -19,7 +19,8 @@ export default async function ClientDetailLayout({ children, params }: LayoutPro
           { href: `/app/clients/${clientId}/orders`, label: "Orders" },
           ...(seesBilling ? [{ href: `/app/clients/${clientId}/billing`, label: "Billing" }] : []),
           { href: `/app/clients/${clientId}/activity`, label: "Activity" },
-          { href: `/app/clients/${clientId}/users`, label: "Users" },
+          { href: `/app/clients/${clientId}/contacts`, label: "Contacts" },
+          { href: `/app/clients/${clientId}/notes`, label: "Notes" },
         ]}
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</div>

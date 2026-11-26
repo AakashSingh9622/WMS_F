@@ -1,6 +1,7 @@
-import { ClientUsersTab } from "@/staff/features/clients/client-users-tab"
+import { redirect } from "next/navigation"
 
-export default async function ClientUsersPage({ params }: PageProps<"/app/clients/[clientId]/users">) {
+// The tab was renamed "Contacts" — old links / bookmarks to …/users land there.
+export default async function ClientUsersRedirect({ params }: PageProps<"/app/clients/[clientId]/users">) {
   const { clientId } = await params
-  return <ClientUsersTab clientId={clientId} />
+  redirect(`/app/clients/${encodeURIComponent(clientId)}/contacts`)
 }

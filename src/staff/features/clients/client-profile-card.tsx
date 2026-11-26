@@ -74,7 +74,15 @@ function ProfileForm({ clientId, profile }: { clientId: string; profile: ClientP
  * Which columns this client's delivery note prints for each box, and in what order (Docbox "Formato" and
  * "Ordenación C1,C2,C3"): tick the ones wanted, use the arrows to reorder. The box number is always printed.
  */
-function DeliveryColumnsEditor({ clientId, profile }: { clientId: string; profile: ClientProfile }) {
+function DeliveryColumnsEditor({
+  clientId,
+  profile,
+  bare,
+}: {
+  clientId: string
+  profile: ClientProfile
+  bare?: boolean // without the top rule (it stands on its own)
+}) {
   const save = useSaveClientProfile(clientId)
   const canEdit = useCan("settings.manage")
   const { data: fields = [] } = useCustomFields(clientId)
@@ -82,7 +90,7 @@ function DeliveryColumnsEditor({ clientId, profile }: { clientId: string; profil
   const [chosen, setChosen] = useState<string[]>(saved)
   const dirty = JSON.stringify(chosen) !== JSON.stringify(saved)
   return (
-    <section className="max-w-xl space-y-3 border-t pt-6">
+    <section className={bare ? "max-w-xl space-y-3" : "max-w-xl space-y-3 border-t pt-6"}>
       <div>
         <h2 className="text-sm font-semibold">Delivery note columns</h2>
         <p className="text-muted-foreground text-xs">What the delivery note lists for each box, in this order.</p>
@@ -106,6 +114,14 @@ function DeliveryColumnsEditor({ clientId, profile }: { clientId: string; profil
       )}
     </section>
   )
+}
+
+/** Only the delivery note columns of a client (the Add client panel's Delivery Note step) — the same editor as below. */
+export function ClientDeliveryNoteColumns({ clientId }: { clientId: string }) {
+  const { data, isLoading, isError } = useClientProfile(clientId)
+  if (isError) return <p className="text-destructive text-sm">Couldn&apos;t load this client&apos;s delivery note.</p>
+  if (isLoading || !data) return <Skeleton className="h-48 w-full max-w-xl" />
+  return <DeliveryColumnsEditor key={JSON.stringify(data.deliveryColumns)} clientId={clientId} profile={data} bare />
 }
 
 /**
