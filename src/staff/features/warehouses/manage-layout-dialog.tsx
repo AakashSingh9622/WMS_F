@@ -30,6 +30,9 @@ function onError(err: unknown) {
   toast.error(err instanceof Error ? err.message : "That didn't work")
 }
 
+/** "Floor 01 (21)" — code plus the floor's global ID. */
+const floorText = (z: Zone) => `Floor ${z.code}${z.number != null ? ` (${z.number})` : ""}`
+
 function ZoneSelect({
   zones,
   value,
@@ -44,13 +47,18 @@ function ZoneSelect({
   return (
     <Select value={value} onValueChange={(v) => onChange(v ?? NO_ZONE)}>
       <SelectTrigger className="w-36" aria-label={label}>
-        <SelectValue getLabel={(id) => (id === NO_ZONE ? "No floor" : `Floor ${zones.find((z) => z.id === id)?.code}`)} />
+        <SelectValue
+          getLabel={(id) => {
+            const z = zones.find((x) => x.id === id)
+            return id === NO_ZONE || !z ? "No floor" : floorText(z)
+          }}
+        />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={NO_ZONE}>No floor</SelectItem>
         {zones.map((z) => (
           <SelectItem key={z.id} value={z.id}>
-            Floor {z.code}
+            {floorText(z)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -111,8 +119,14 @@ function LevelRow({
   }
   return (
     <li className="flex flex-wrap items-center gap-2 py-2 text-sm">
-      <span className="w-28 font-medium">
+      <span className="w-36 font-medium">
         {what} {item.code}
+        {item.number != null && (
+          <span className="text-muted-foreground font-normal tabular-nums" title={`${what} ID ${item.number}`}>
+            {" "}
+            ({item.number})
+          </span>
+        )}
       </span>
       <span className="text-muted-foreground min-w-0 flex-1 truncate">{item.name}</span>
       <span className="text-muted-foreground text-xs tabular-nums">

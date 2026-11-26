@@ -17,6 +17,7 @@ interface Option {
   value: string
   label: string
   disabled?: boolean
+  icon?: React.ReactNode // shown before the label, in the list and in the box (e.g. a country's flag)
 }
 
 function Marker(_props: { children?: React.ReactNode }) {
@@ -40,7 +41,13 @@ function SelectTrigger(_props: {
 function SelectContent(_props: { children?: React.ReactNode; className?: string }) {
   return null
 }
-function SelectItem(_props: { value: string; children?: React.ReactNode; disabled?: boolean; className?: string }) {
+function SelectItem(_props: {
+  value: string
+  children?: React.ReactNode
+  disabled?: boolean
+  className?: string
+  icon?: React.ReactNode
+}) {
   return null
 }
 function SelectGroup({ children }: { children?: React.ReactNode }) {
@@ -81,6 +88,7 @@ function collect(children: React.ReactNode, out: Collected) {
         value: String(props.value),
         label: textOf(props.children).trim(),
         disabled: Boolean(props.disabled),
+        icon: props.icon as React.ReactNode,
       })
     } else if (role === "trigger") {
       out.trigger = props as Collected["trigger"]
@@ -189,6 +197,16 @@ function Select({
         // because their CSS transform makes fixed coordinates relative to the dialog (menu jumped to a corner).
         menuPlacement="auto"
         components={{ IndicatorSeparator: null }}
+        formatOptionLabel={(o) =>
+          o.icon ? (
+            <span className="flex items-center gap-2">
+              {o.icon}
+              {o.label}
+            </span>
+          ) : (
+            o.label
+          )
+        }
       />
     </div>
   )

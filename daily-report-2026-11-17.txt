@@ -1,0 +1,8 @@
+Daily Report - 17 Nov 2026
+
+1. Improved the box registration flow and the box detail page (actions and contents).
+2. Enhanced box search/scan, and the box Import and Bulk Move screens.
+3. Added search/filter to the Orders list and updated order creation and actions.
+4. Added new reports and extended the Custom Fields, Exports and Layout Import settings.
+5. Enhanced the warehouse, rack and location screens and connected the new backend APIs.
+6. Made small fixes in invoices, audit, print documents and dependencies.

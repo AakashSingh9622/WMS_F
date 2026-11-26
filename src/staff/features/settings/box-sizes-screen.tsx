@@ -8,7 +8,15 @@ import { toast } from "sonner"
 import { useBoxSizeSettings, useCreateBoxSize, useDeleteBoxSize, useUpdateBoxSize } from "@/api/settings"
 import type { BoxSizeType } from "@/api/types"
 import { useCan } from "@/auth/useAuth"
-import { formatLength, toCentimetres, type LengthUnit } from "@/domain/dimensions"
+import {
+  MAX_DIMENSION_CM,
+  checkDimensions,
+  formatDimensions,
+  formatVolume,
+  sizeVolumeCm3,
+  volumeCm3,
+  type LengthUnit,
+} from "@/domain/dimensions"
 import { formatDateTime } from "@/lib/formatting"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,18 +27,77 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-const MAX_CM = 1000
-
 function onError(err: unknown) {
   toast.error(err instanceof Error ? err.message : "That didn't work")
 }
 
-/** Length typed in cm or feet -> whole cm, or null when it isn't a usable length. */
-function lengthOf(value: string, unit: LengthUnit): number | null {
-  const n = Number(value)
-  if (!(n > 0)) return null
-  const cm = toCentimetres(n, unit)
-  return cm >= 1 && cm <= MAX_CM ? cm : null
+interface Dims {
+  length: string
+  height: string
+  depth: string
+}
+
+const dimsOf = (s: BoxSizeType): Dims => ({
+  length: String(s.lengthCm),
+  height: String(s.heightCm),
+  depth: String(s.depthCm),
+})
+
+/** Length, height and depth of one box (one unit for all three), with what they add up to. */
+function DimensionFields({
+  idPrefix,
+  dims,
+  unit,
+  onDims,
+  onUnit,
+}: {
+  idPrefix: string
+  dims: Dims
+  unit: LengthUnit
+  onDims: (d: Dims) => void
+  onUnit: (u: LengthUnit) => void
+}) {
+  const check = checkDimensions(dims, unit)
+  const set = (key: keyof Dims) => (v: string) => onDims({ ...dims, [key]: v })
+  return (
+    <div className="space-y-2">
+      <Field>
+        <FieldLabel htmlFor={`${idPrefix}-length`}>Length of one box</FieldLabel>
+        <LengthInput id={`${idPrefix}-length`} value={dims.length} unit={unit} onValue={set("length")} onUnit={onUnit} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field>
+          <FieldLabel htmlFor={`${idPrefix}-height`}>Height</FieldLabel>
+          <Input
+            id={`${idPrefix}-height`}
+            type="number"
+            min={0}
+            step="any"
+            inputMode="decimal"
+            value={dims.height}
+            onChange={(e) => set("height")(e.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${idPrefix}-depth`}>Depth (width)</FieldLabel>
+          <Input
+            id={`${idPrefix}-depth`}
+            type="number"
+            min={0}
+            step="any"
+            inputMode="decimal"
+            value={dims.depth}
+            onChange={(e) => set("depth")(e.target.value)}
+          />
+        </Field>
+      </div>
+      <FieldDescription>
+        {check.ok
+          ? `= ${formatDimensions(check.length, check.height, check.depth)} · takes ${formatVolume(volumeCm3(check.length, check.height, check.depth))} of a module cell`
+          : `Each side up to ${MAX_DIMENSION_CM} cm — the space one box takes is length × height × depth.`}
+      </FieldDescription>
+    </div>
+  )
 }
 
 function LengthInput({
@@ -72,29 +139,29 @@ function LengthInput({
 
 function AddSizeCard() {
   const [name, setName] = useState("")
-  const [length, setLength] = useState("")
+  const [dims, setDims] = useState<Dims>({ length: "", height: "", depth: "" })
   const [unit, setUnit] = useState<LengthUnit>("cm")
   const create = useCreateBoxSize()
-  const cm = lengthOf(length, unit)
+  const check = checkDimensions(dims, unit)
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Add a size</CardTitle>
-        <CardDescription>A name staff pick when registering boxes, and the shelf space one box takes.</CardDescription>
+        <CardDescription>A name staff pick when registering boxes, and the space one box takes on a shelf.</CardDescription>
       </CardHeader>
       <CardContent>
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            if (!cm) return
+            if (!check.ok) return
             create.mutate(
-              { name, lengthCm: cm },
+              { name, lengthCm: check.length, heightCm: check.height, depthCm: check.depth },
               {
                 onSuccess: (s) => {
                   toast.success(`${s.name} added`)
                   setName("")
-                  setLength("")
+                  setDims({ length: "", height: "", depth: "" })
                 },
                 onError,
               },
@@ -112,16 +179,8 @@ function AddSizeCard() {
                 placeholder="e.g. Archive XL"
               />
             </Field>
-            <Field>
-              <FieldLabel htmlFor="new-size-length">Shelf length of one box</FieldLabel>
-              <LengthInput id="new-size-length" value={length} unit={unit} onValue={setLength} onUnit={setUnit} />
-              <FieldDescription>
-                {cm
-                  ? `= ${formatLength(cm)} of a module cell`
-                  : `The side of the box along the shelf — up to ${MAX_CM} cm.`}
-              </FieldDescription>
-            </Field>
-            <Button type="submit" disabled={!name.trim() || !cm || create.isPending}>
+            <DimensionFields idPrefix="new-size" dims={dims} unit={unit} onDims={setDims} onUnit={setUnit} />
+            <Button type="submit" disabled={!name.trim() || !check.ok || create.isPending}>
               {create.isPending ? "Adding…" : "Add size"}
             </Button>
           </FieldGroup>
@@ -134,11 +193,11 @@ function AddSizeCard() {
 function SizeRow({ size, canManage }: { size: BoxSizeType; canManage: boolean }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(size.name)
-  const [length, setLength] = useState(String(size.lengthCm))
+  const [dims, setDims] = useState<Dims>(dimsOf(size))
   const [unit, setUnit] = useState<LengthUnit>("cm")
   const update = useUpdateBoxSize()
   const remove = useDeleteBoxSize()
-  const cm = lengthOf(length, unit)
+  const check = checkDimensions(dims, unit)
   const removable = !size.builtIn && size.boxCount === 0
 
   if (editing) {
@@ -149,20 +208,21 @@ function SizeRow({ size, canManage }: { size: BoxSizeType; canManage: boolean })
         </TableCell>
         <TableCell colSpan={3}>
           <div className="max-w-xs space-y-1">
-            <LengthInput id={`len-${size.code}`} value={length} unit={unit} onValue={setLength} onUnit={setUnit} />
-            <p className="text-muted-foreground text-xs">
-              {cm ? formatLength(cm) : `1–${MAX_CM} cm`}
-              {size.boxCount > 0 && " · boxes already registered keep their length"}
-            </p>
+            <DimensionFields idPrefix={`dim-${size.code}`} dims={dims} unit={unit} onDims={setDims} onUnit={setUnit} />
+            {size.boxCount > 0 && (
+              <p className="text-muted-foreground text-xs">Boxes already registered keep their size.</p>
+            )}
           </div>
         </TableCell>
         <TableCell className="text-right whitespace-nowrap">
           <Button
             size="sm"
-            disabled={!name.trim() || !cm || update.isPending}
+            disabled={!name.trim() || !check.ok || update.isPending}
             onClick={() =>
               update.mutate(
-                { code: size.code, name, lengthCm: cm ?? undefined },
+                check.ok
+                  ? { code: size.code, name, lengthCm: check.length, heightCm: check.height, depthCm: check.depth }
+                  : { code: size.code, name },
                 {
                   onSuccess: () => {
                     toast.success("Size saved")
@@ -189,7 +249,10 @@ function SizeRow({ size, canManage }: { size: BoxSizeType; canManage: boolean })
         {size.name}
         {size.builtIn && <span className="text-muted-foreground ml-2 text-xs font-normal">built in</span>}
       </TableCell>
-      <TableCell className="tabular-nums">{formatLength(size.lengthCm)}</TableCell>
+      <TableCell className="tabular-nums">
+        {formatDimensions(size.lengthCm, size.heightCm, size.depthCm)}
+        <span className="text-muted-foreground ml-2 text-xs">{formatVolume(sizeVolumeCm3(size))}</span>
+      </TableCell>
       <TableCell className="tabular-nums">{size.boxCount.toLocaleString("en-GB")}</TableCell>
       <TableCell>
         <Badge variant={size.active ? "secondary" : "outline"}>{size.active ? "In use" : "Retired"}</Badge>
@@ -202,7 +265,7 @@ function SizeRow({ size, canManage }: { size: BoxSizeType; canManage: boolean })
               variant="ghost"
               onClick={() => {
                 setName(size.name)
-                setLength(String(size.lengthCm))
+                setDims(dimsOf(size))
                 setUnit("cm")
                 setEditing(true)
               }}
@@ -249,8 +312,8 @@ function SizeRow({ size, canManage }: { size: BoxSizeType; canManage: boolean })
 }
 
 /**
- * Settings → Box sizes (Sprint 11). Standard and Large are built in; admins add their own sizes (a name and the shelf
- * length one box takes). A size in use can be renamed, resized (only boxes registered afterwards take the new length)
+ * Settings → Box sizes (Sprint 11). Standard and Large are built in; admins add their own sizes (a name and the length,
+ * height and depth one box takes). A size in use can be renamed, resized (only boxes registered afterwards take the new size)
  * or retired — removed only when no box has it.
  */
 export function BoxSizesScreen() {
@@ -262,7 +325,7 @@ export function BoxSizesScreen() {
       <PageHeader
         icon={PackagePlus}
         title="Box sizes"
-        description="The sizes staff choose from when registering boxes, and how much shelf space each one takes."
+        description="The sizes staff choose from when registering boxes, and how much shelf space (length × height × depth) each one takes."
       />
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -270,9 +333,8 @@ export function BoxSizesScreen() {
           <CardHeader>
             <CardTitle className="text-base">Sizes</CardTitle>
             <CardDescription>
-              The length is the side of the box along the shelf; it decides how many boxes fit in a rack cell. A new
-              length applies to boxes registered from then on — boxes already on a shelf keep theirs, so capacity stays
-              right. Retired sizes stay on the boxes that have them but aren&apos;t offered for new ones.
+              A box takes up its length × height × depth of a rack cell, which decides how many boxes fit. A new size
+              applies to boxes registered from then on — boxes already on a shelf keep theirs, so capacity stays right. Retired sizes stay on the boxes that have them but aren&apos;t offered for new ones.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -283,7 +345,7 @@ export function BoxSizesScreen() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
-                    <TableHead>Shelf length</TableHead>
+                    <TableHead>Size (L × H × D)</TableHead>
                     <TableHead>Boxes</TableHead>
                     <TableHead>State</TableHead>
                     <TableHead />

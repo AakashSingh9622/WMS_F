@@ -1,8 +1,10 @@
 "use client"
 
 import Link from "next/link"
+import { useSyncExternalStore } from "react"
 import {
   ArrowRight,
+  ArrowUpFromLine,
   CalendarClock,
   Check,
   ClipboardCheck,
@@ -11,6 +13,7 @@ import {
   Search,
   SearchOff,
   ShieldAlert,
+  TriangleAlertIcon,
 } from "@/components/icons"
 import type { AppIcon } from "@/components/icons"
 
@@ -27,9 +30,20 @@ import { cn } from "@/lib/utils"
 import { AuditTimeline } from "@/components/audit-timeline"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StaffUpdates } from "@/staff/features/dashboard/staff-updates"
+import { formatVolume } from "@/domain/dimensions"
 
 // Only the latest few events live on the dashboard (so the page stays short); the full history is the Audit log.
 const RECENT_ACTIVITY_COUNT = 6
+
+// The brand colours of the welcome banner, in one place.
+const HERO_GRADIENT = "linear-gradient(115deg, #7d0013 0%, #b93c2e 55%, #e4572e 125%)"
+const HERO_ACCENT = "text-[#b93c2e]"
+
+/** The greeting name: the user's name, or the part of the e-mail before the "@" when the name is just the e-mail. */
+function greetingName(name?: string, email?: string) {
+  const raw = (name || email || "").trim()
+  return raw.includes("@") ? raw.split("@")[0] : raw
+}
 
 // --- Quick actions (inside the hero) ---------------------------------------
 
@@ -106,7 +120,7 @@ function QuickActionTile({ action }: { action: QuickAction }) {
       href={action.href}
       className="group flex items-center gap-3 rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm transition-all outline-none hover:-translate-y-0.5 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/70"
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white text-[#b93c2e]">
+      <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg bg-white", HERO_ACCENT)}>
         <Icon className="size-5" aria-hidden />
       </span>
       <span className="min-w-0">
@@ -138,6 +152,7 @@ function StatCard({
   icon: Icon,
   tone,
   loading,
+  failed,
 }: {
   href: string
   label: string
@@ -145,8 +160,10 @@ function StatCard({
   icon: AppIcon
   tone: Tone
   loading: boolean
+  /** The count could not be loaded: show that instead of a misleading "0 / all done". */
+  failed?: boolean
 }) {
-  const active = (count ?? 0) > 0
+  const active = !failed && (count ?? 0) > 0
   const styles = TONE[tone]
 
   return (
@@ -174,12 +191,16 @@ function StatCard({
               active ? styles.value : "text-muted-foreground",
             )}
           >
-            {count ?? 0}
+            {failed ? "–" : (count ?? 0)}
           </span>
         )}
-        <span className="text-muted-foreground mt-1 block text-sm leading-tight">{label}</span>
+        <span className="text-muted-foreground mt-1 block text-sm leading-tight">
+          {failed && !loading ? `${label} · couldn't load` : label}
+        </span>
       </span>
-      {!loading && !active ? (
+      {failed && !loading ? (
+        <TriangleAlertIcon className="text-status-pending-destruction size-5 shrink-0" aria-label="Could not load" />
+      ) : !loading && !active ? (
         <span className="bg-status-stored/15 text-status-stored flex size-6 shrink-0 items-center justify-center rounded-full">
           <Check className="size-4" aria-label="Nothing to do" />
         </span>
@@ -247,8 +268,9 @@ function WarehouseCard({
           {code}
         </span>
         <p className="mt-1 truncate font-semibold">{name}</p>
-        <p className="text-muted-foreground mt-0.5 text-xs tabular-nums">
-          {used.toLocaleString("en-GB")} of {total.toLocaleString("en-GB")} cm
+        <p className="mt-0.5 text-xs font-medium tabular-nums">{formatVolume(Math.max(total - used, 0))} free</p>
+        <p className="text-muted-foreground text-xs tabular-nums">
+          {formatVolume(used)} of {formatVolume(total)} used
         </p>
         <p className="text-muted-foreground text-xs tabular-nums">
           {racks} rack{racks === 1 ? "" : "s"} · {slots} slots
@@ -258,37 +280,61 @@ function WarehouseCard({
   )
 }
 
-function formatToday() {
-  const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(new Date())
-  return `${weekday}, ${formatDate(new Date().toISOString())}`
+/** Today's date; set after mount so the server's and the browser's clock/timezone can't disagree during hydration. */
+function useToday() {
+  return useSyncExternalStore(
+    () => () => {},
+    () => {
+      const now = new Date()
+      return `${new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(now)}, ${formatDate(now.toISOString())}`
+    },
+    () => "",
+  )
 }
 
 export function StaffDashboardScreen() {
   const { user } = useAuth()
-  const { data: warehouses, isLoading: loadingWarehouses } = useWarehouses()
-  const { data: needsApproval, isLoading: l1 } = useOrderSearch({ status: ["requested"], pageSize: 1 })
-  const { data: scheduled, isLoading: l2 } = useOrderSearch({
-    status: ["scheduled", "approved", "in_progress"],
-    pageSize: 1,
-  })
-  const { data: unallocated, isLoading: l3 } = useBoxSearch({ status: ["unallocated"], pageSize: 1 })
-  const { data: onHold, isLoading: l4 } = useBoxSearch({ onHold: true, pageSize: 1 })
-  const { data: missing, isLoading: l5 } = useBoxSearch({ status: ["missing"], pageSize: 1 })
-  const { data: recentActivity, isLoading: loadingActivity } = useAuditSearch({ pageSize: RECENT_ACTIVITY_COUNT })
+  const today = useToday()
+  const roles = user?.roles
+  const canReadAudit = can(roles, "audit.read") // the Audit log page needs it
+  const canApprove = can(roles, "orders.approve")
+  const canSeeOrders = can(roles, "orders.operate") || canApprove
+  const canOperateBoxes = can(roles, "boxes.operate")
 
+  const { data: warehouses, isLoading: loadingWarehouses } = useWarehouses()
+  // The counts a role can't act on are not asked for at all.
+  const needsApproval = useOrderSearch({ status: ["requested"], pageSize: 1 }, { enabled: canApprove })
+  const scheduled = useOrderSearch({ status: ["scheduled", "approved", "in_progress"], pageSize: 1 }, { enabled: canSeeOrders })
+  const unallocated = useBoxSearch({ status: ["unallocated"], pageSize: 1 }, { enabled: canOperateBoxes })
+  const onHold = useBoxSearch({ onHold: true, pageSize: 1 })
+  const missing = useBoxSearch({ status: ["missing"], pageSize: 1 })
+  const onLoan = useBoxSearch({ status: ["out"], pageSize: 1 })
+  const { data: recentActivity, isLoading: loadingActivity } = useAuditSearch(
+    { pageSize: RECENT_ACTIVITY_COUNT },
+    { enabled: canReadAudit },
+  )
+
+  // Fullest warehouse first, so the ones that need space are on top.
+  const sortedWarehouses = warehouses
+    ? [...warehouses].sort(
+        (a, b) => capacityPercent(b.usedCapacity, b.totalCapacity) - capacityPercent(a.usedCapacity, a.totalCapacity),
+      )
+    : undefined
   const totalUsed = warehouses?.reduce((sum, w) => sum + w.usedCapacity, 0) ?? 0
   const totalCapacity = warehouses?.reduce((sum, w) => sum + w.totalCapacity, 0) ?? 0
   const overallPercent = capacityPercent(totalUsed, totalCapacity)
   const overallLevel = capacityLevel(totalUsed, totalCapacity)
-  const canReadAudit = can(user?.roles, "audit.read") // the Audit log page needs it
-  const quickActions = QUICK_ACTIONS.filter((a) => !a.hidden && (!a.permission || can(user?.roles, a.permission)))
+  const quickActions = QUICK_ACTIONS.filter((a) => !a.permission || can(roles, a.permission))
+  const name = greetingName(user?.name, user?.email)
 
   // One sentence under the greeting: what is waiting right now.
   const waiting = [
-    (needsApproval?.total ?? 0) > 0 &&
-      `${needsApproval?.total} order${needsApproval?.total === 1 ? "" : "s"} to approve`,
-    (onHold?.total ?? 0) > 0 && `${onHold?.total} box${onHold?.total === 1 ? "" : "es"} on hold`,
-    (missing?.total ?? 0) > 0 && `${missing?.total} missing`,
+    canApprove &&
+      (needsApproval.data?.total ?? 0) > 0 &&
+      `${needsApproval.data?.total} order${needsApproval.data?.total === 1 ? "" : "s"} to approve`,
+    (onHold.data?.total ?? 0) > 0 && `${onHold.data?.total} box${onHold.data?.total === 1 ? "" : "es"} on hold`,
+    (missing.data?.total ?? 0) > 0 && `${missing.data?.total} missing`,
+    (onLoan.data?.total ?? 0) > 0 && `${onLoan.data?.total} on loan`,
   ].filter(Boolean)
 
   return (
@@ -297,7 +343,7 @@ export function StaffDashboardScreen() {
       <section
         aria-label="Welcome"
         className="relative isolate overflow-hidden rounded-3xl p-6 text-white md:p-8"
-        style={{ backgroundImage: "linear-gradient(115deg, #7d0013 0%, #b93c2e 55%, #e4572e 125%)" }}
+        style={{ backgroundImage: HERO_GRADIENT }}
       >
         <div
           className="pointer-events-none absolute inset-0 -z-10 opacity-[0.14]"
@@ -315,22 +361,26 @@ export function StaffDashboardScreen() {
           aria-hidden
         />
 
-        <div className="grid items-center gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
-          <div className="space-y-3">
-            <span className="inline-block rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold tracking-[0.14em] uppercase">
-              {formatToday()}
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <span
+              className="inline-block min-h-6 rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold tracking-[0.14em] uppercase"
+              suppressHydrationWarning
+            >
+              {today || " "}
             </span>
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-              {user ? `Welcome back, ${user.name}` : "Welcome back"}
+              {name ? `Welcome back, ${name}` : "Welcome back"}
             </h1>
-            <p className="max-w-[46ch] text-sm text-white/80">
+            <p className="max-w-[60ch] text-sm text-white/80">
               {waiting.length > 0
                 ? `Waiting for you: ${waiting.join(" · ")}.`
                 : "Nothing is waiting for you right now."}
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {/* full width, four to a row, so the last row is never half empty */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {quickActions.map((action) => (
               <QuickActionTile key={action.href} action={action} />
             ))}
@@ -342,46 +392,67 @@ export function StaffDashboardScreen() {
         <h2 id="needs-attention" className="text-sm font-semibold">
           Needs attention
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {/* a card shows only if the role can act on it */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {canApprove && (
+            <StatCard
+              href="/app/orders?tab=needs-approval"
+              label="Awaiting approval"
+              count={needsApproval.data?.total}
+              icon={ClipboardCheck}
+              tone="warning"
+              loading={needsApproval.isLoading}
+              failed={needsApproval.isError}
+            />
+          )}
+          {canSeeOrders && (
+            <StatCard
+              href="/app/orders?tab=scheduled"
+              label="Scheduled / in progress"
+              count={scheduled.data?.total}
+              icon={CalendarClock}
+              tone="info"
+              loading={scheduled.isLoading}
+              failed={scheduled.isError}
+            />
+          )}
+          {canOperateBoxes && (
+            <StatCard
+              href="/app/boxes?status=unallocated"
+              label="Unallocated boxes"
+              count={unallocated.data?.total}
+              icon={PackageOpen}
+              tone="warning"
+              loading={unallocated.isLoading}
+              failed={unallocated.isError}
+            />
+          )}
           <StatCard
-            href="/app/orders?tab=needs-approval"
-            label="Awaiting approval"
-            count={needsApproval?.total}
-            icon={ClipboardCheck}
-            tone="warning"
-            loading={l1}
-          />
-          <StatCard
-            href="/app/orders?tab=scheduled"
-            label="Scheduled / in progress"
-            count={scheduled?.total}
-            icon={CalendarClock}
+            href="/app/boxes?grp=loan"
+            label="Boxes on loan"
+            count={onLoan.data?.total}
+            icon={ArrowUpFromLine}
             tone="info"
-            loading={l2}
-          />
-          <StatCard
-            href="/app/boxes?status=unallocated"
-            label="Unallocated boxes"
-            count={unallocated?.total}
-            icon={PackageOpen}
-            tone="warning"
-            loading={l3}
+            loading={onLoan.isLoading}
+            failed={onLoan.isError}
           />
           <StatCard
             href="/app/boxes?onHold=true"
             label="Boxes on hold"
-            count={onHold?.total}
+            count={onHold.data?.total}
             icon={ShieldAlert}
             tone="danger"
-            loading={l4}
+            loading={onHold.isLoading}
+            failed={onHold.isError}
           />
           <StatCard
             href="/app/boxes?missing=true"
             label="Missing boxes"
-            count={missing?.total}
+            count={missing.data?.total}
             icon={SearchOff}
             tone="danger"
-            loading={l5}
+            loading={missing.isLoading}
+            failed={missing.isError}
           />
         </div>
       </section>
@@ -394,7 +465,7 @@ export function StaffDashboardScreen() {
             </h2>
             {warehouses && totalCapacity > 0 && (
               <p className="text-muted-foreground text-xs tabular-nums">
-                {totalUsed.toLocaleString("en-GB")} / {totalCapacity.toLocaleString("en-GB")} cm used overall
+                {formatVolume(totalUsed)} / {formatVolume(totalCapacity)} used overall
               </p>
             )}
           </div>
@@ -419,9 +490,9 @@ export function StaffDashboardScreen() {
               <Skeleton className="h-28 w-full rounded-2xl" />
               <Skeleton className="h-28 w-full rounded-2xl" />
             </div>
-          ) : warehouses && warehouses.length > 0 ? (
+          ) : sortedWarehouses && sortedWarehouses.length > 0 ? (
             <div className="grid gap-3 sm:grid-cols-2">
-              {warehouses.map((w) => (
+              {sortedWarehouses.map((w) => (
                 <WarehouseCard
                   key={w.id}
                   href={`/app/warehouses/${w.id}`}
@@ -440,26 +511,26 @@ export function StaffDashboardScreen() {
         </section>
 
         <div className="space-y-6">
-          <StaffUpdates />
-          <section aria-labelledby="recent-activity" className="space-y-3">
-            <div className="flex items-end justify-between gap-3">
-              <h2 id="recent-activity" className="text-sm font-semibold">
-                Recent activity
-              </h2>
-              {canReadAudit && (
+          <StaffUpdates limit={4} />
+          {canReadAudit && (
+            <section aria-labelledby="recent-activity" className="space-y-3">
+              <div className="flex items-end justify-between gap-3">
+                <h2 id="recent-activity" className="text-sm font-semibold">
+                  Recent activity
+                </h2>
                 <Link href="/app/audit" className="text-primary text-xs underline-offset-4 hover:underline">
                   View all
                 </Link>
-              )}
-            </div>
-            <div className="bg-card rounded-2xl border p-4">
-              {loadingActivity ? (
-                <Skeleton className="h-48 w-full" />
-              ) : (
-                <AuditTimeline events={recentActivity?.items ?? []} orderHref={(id) => `/app/orders/${id}`} />
-              )}
-            </div>
-          </section>
+              </div>
+              <div className="bg-card rounded-2xl border p-4">
+                {loadingActivity ? (
+                  <Skeleton className="h-48 w-full" />
+                ) : (
+                  <AuditTimeline events={recentActivity?.items ?? []} orderHref={(id) => `/app/orders/${id}`} />
+                )}
+              </div>
+            </section>
+          )}
         </div>
       </div>
     </div>

@@ -11,6 +11,8 @@ export type ClientsSort = "name" | "boxes" | "balance" | "activity"
 
 interface ClientsUiState {
   folderId: string // "" = all folders
+  /** A folder was picked (or the default one set) — the default folder isn't applied again over it. */
+  folderChosen: boolean
   q: string
   page: number
   filter: ClientsFilter
@@ -22,6 +24,7 @@ interface ClientsUiState {
 
 const initialState: ClientsUiState = {
   folderId: "",
+  folderChosen: false,
   q: "",
   page: 1,
   filter: "all",
@@ -35,9 +38,16 @@ const clientsUiSlice = createSlice({
   reducers: {
     folderSelected(state, action: PayloadAction<string>) {
       state.folderId = action.payload
+      state.folderChosen = true
       state.q = ""
       state.page = 1
       state.selectedClient = null
+    },
+    // The user's default folder (localStorage "ProjectId", saved at login) — only while nothing has been picked yet.
+    folderDefaulted(state, action: PayloadAction<string>) {
+      if (state.folderChosen || state.folderId) return
+      state.folderId = action.payload
+      state.folderChosen = true
     },
     searchChanged(state, action: PayloadAction<string>) {
       state.q = action.payload
@@ -67,6 +77,7 @@ const clientsUiSlice = createSlice({
 export type { ClientsUiState }
 export const {
   folderSelected,
+  folderDefaulted,
   searchChanged,
   pageChanged,
   filterChanged,

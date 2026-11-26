@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/page-header"
 import { ScanInput, ScanLog, useScanLog } from "@/components/scan-input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { formatVolume } from "@/domain/dimensions"
 
 /**
  * Put-away by barcode (spec §6.1): scan the box, then the position label — or scan / type a shelf code ("B04-3") and the
@@ -28,7 +29,7 @@ export function PutAwayScreen() {
     try {
       const res = await putAway.mutateAsync({ boxBarcode: boxCode, slotBarcode: code })
       const at = res.box.locationPath
-      log.add(true, `${res.box.boxNumber} → ${at ? locationText(at) : code} (${res.slot.used}/${res.slot.capacity} cm)`)
+      log.add(true, `${res.box.boxNumber} → ${at ? locationText(at) : code} (${formatVolume(res.slot.used)} / ${formatVolume(res.slot.capacity)})`)
     } catch (err) {
       log.add(false, `${boxCode} → ${code}: ${err instanceof Error ? err.message : "not put away"}`)
     } finally {

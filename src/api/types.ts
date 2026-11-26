@@ -57,6 +57,7 @@ export type Warehouse = z.infer<typeof warehouseSchema>
 
 const layoutLevelSchema = z.object({
   id: z.string(),
+  number: z.number().optional(), // short global id of a floor / aisle, shown as "Floor 01 (21)"
   warehouseId: z.string(),
   code: z.string(),
   name: z.string().optional(),
@@ -83,6 +84,14 @@ export const rackSchema = z.object({
   rows: z.number(), // shelves
   columns: z.number(), // positions per shelf
   cellLengthCm: z.number(), // length of one cell (row × column), in centimetres
+  cellHeightCm: z.number(), // a cell is length × height × depth; its volume (cm³) is the capacity
+  cellDepthCm: z.number(),
+  // "The size of each shelf varies": then each entry of `shelves` can differ. `shelves` is always one per shelf, row 1 =
+  // the bottom one (older backends don't send it -> use the cell size for every shelf, see rackShelves()).
+  variesByShelf: z.boolean().optional(),
+  shelves: z
+    .array(z.object({ row: z.number(), lengthCm: z.number(), heightCm: z.number(), depthCm: z.number() }))
+    .optional(),
   usedCapacity: z.number(),
   totalCapacity: z.number(),
   zone: layoutLevelSchema.optional(), // only on GET /racks/:id
@@ -109,8 +118,8 @@ export const slotSchema = z.object({
   barcode: z.string(),
   row: z.number(),
   column: z.number(),
-  capacity: z.number(),
-  used: z.number(),
+  capacity: z.number(), // cm³ (cell volume)
+  used: z.number(), // cm³ of boxes inside
   status: slotStatusSchema,
 })
 export type Slot = z.infer<typeof slotSchema>
@@ -197,7 +206,10 @@ export type BoxSize = z.infer<typeof boxSizeSchema>
 export const boxSizeTypeSchema = z.object({
   code: z.string(),
   name: z.string(),
-  lengthCm: z.number(), // shelf space one box takes in a rack cell
+  lengthCm: z.number(), // box length, depth and height: the space one box takes in a rack cell is their product
+  heightCm: z.number(),
+  depthCm: z.number(),
+  volumeCm3: z.number().optional(), // length × height × depth
   active: z.boolean(), // false = retired: shown on old boxes, not offered for new ones
   builtIn: z.boolean(), // standard / large: can be renamed or retired, not removed
   boxCount: z.number(),
@@ -245,6 +257,9 @@ export const boxSchema = z.object({
   status: boxStatusSchema,
   onHold: z.boolean(),
   lengthCm: z.number().optional(), // cm this box takes in a cell (copied from the Box sizes setting when registered)
+  heightCm: z.number().optional(),
+  depthCm: z.number().optional(),
+  volumeCm3: z.number().optional(), // what the box counts for in a cell (cm³)
   holdReason: z.string().optional(),
   missingReason: z.string().optional(),
   missingAt: z.string().optional(),
@@ -263,6 +278,9 @@ export const boxSchema = z.object({
   customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional(), // the client's own fields, by code (C1 …)
   labelPrinted: z.boolean(),
   slotId: z.string().optional(),
+  // Only from GET /boxes/:id: the module (rack) and warehouse of the box's position, to draw where it stands.
+  rackId: z.string().optional(),
+  slotWarehouseId: z.string().optional(),
   locationPath: locationPathSchema.optional(),
   openOrder: boxOpenOrderSchema.optional(),
   createdAt: z.string(),

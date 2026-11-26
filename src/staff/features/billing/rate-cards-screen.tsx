@@ -39,10 +39,27 @@ function toRates(form: PriceForm, storage: Record<string, string>, previous?: Ra
   return rates
 }
 
-/** New card for a client (or the default card). It starts on its date and closes the card it replaces. */
-function RateCardDialog({ from, label }: { from?: RateCard; label: string }) {
-  const [open, setOpen] = useState(false)
-  const [clientId, setClientId] = useState(from ? (from.clientId ?? DEFAULT_CLIENT) : DEFAULT_CLIENT)
+/**
+ * The fields of a new rate card and its Save button. `forClient` fixes the card to one client (e.g. the client just
+ * added from the top bar's Add client); otherwise "For" picks a client or the default card. `inline` = shown on a page
+ * or panel rather than in a dialog (a plain footer instead of the dialog's).
+ */
+export function RateCardForm({
+  from,
+  forClient,
+  onSaved,
+  inline,
+  defaultOnly,
+}: {
+  from?: RateCard
+  forClient?: { id: string; name: string }
+  onSaved?: () => void
+  inline?: boolean
+  defaultOnly?: boolean // only the default card (Settings → Default Rate List)
+}) {
+  const [clientId, setClientId] = useState(
+    forClient ? forClient.id : from ? (from.clientId ?? DEFAULT_CLIENT) : DEFAULT_CLIENT,
+  )
   const [effectiveFrom, setEffectiveFrom] = useState(todayISO())
   const [taxRateId, setTaxRateId] = useState(from?.taxRateId ?? "GB_STANDARD")
   const [notes, setNotes] = useState("")
@@ -55,7 +72,11 @@ function RateCardDialog({ from, label }: { from?: RateCard; label: string }) {
   const create = useCreateRateCard()
   const { data: clients } = useGetClientsWithDetailsQuery()
   const clientName = (id: string) =>
-    id === DEFAULT_CLIENT ? "Default (all clients)" : (clients?.find((c) => c.ClientId === id)?.Client ?? id)
+    id === DEFAULT_CLIENT
+      ? "Default (all clients)"
+      : id === forClient?.id
+        ? forClient.name
+        : (clients?.find((c) => c.ClientId === id)?.Client ?? id)
   const pricesOk = [...Object.values(form), ...Object.values(storage)].every(
     (v) => v === "" || (!Number.isNaN(Number(v)) && Number(v) >= 0),
   )
@@ -86,12 +107,104 @@ function RateCardDialog({ from, label }: { from?: RateCard; label: string }) {
         notes: notes.trim() || undefined,
       })
       toast.success("Rate card saved")
-      setOpen(false)
+      onSaved?.()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save the rate card")
     }
   }
 
+  const saveButton = (
+    <Button onClick={submit} disabled={!effectiveFrom || !pricesOk || create.isPending}>
+      {create.isPending ? "Saving…" : "Save rate card"}
+    </Button>
+  )
+
+  return (
+    <>
+      <FieldGroup>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="rc-client">For</FieldLabel>
+            <Select value={clientId} onValueChange={(v) => setClientId(v ?? clientId)} disabled={!!from || !!forClient || defaultOnly}>
+              <SelectTrigger id="rc-client">
+                <SelectValue getLabel={clientName} />
+              </SelectTrigger>
+              <SelectContent>
+                {forClient && <SelectItem value={forClient.id}>{forClient.name}</SelectItem>}
+                <SelectItem value={DEFAULT_CLIENT}>Default (all clients)</SelectItem>
+                {clients?.map((c) => (
+                  <SelectItem key={c.ClientId} value={c.ClientId}>
+                    {c.Client}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="rc-from">Starts on</FieldLabel>
+            <Input id="rc-from" type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} />
+          </Field>
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Storage per box / month, by size</p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {sizes.map((s) => (
+              <Field key={s.code}>
+                <FieldLabel htmlFor={`rc-storage-${s.code}`}>
+                  {s.name}
+                  {!s.active && " (retired)"}
+                </FieldLabel>
+                <Input
+                  id={`rc-storage-${s.code}`}
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={storageValue(s.code)}
+                  onChange={(e) =>
+                    setStorageTyped({
+                      ...storageTyped,
+                      [s.code]: e.target.value,
+                    })
+                  }
+                />
+              </Field>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">{rateKeys.map((k) => price(k, RATE_LABEL[k]))}</div>
+        <FieldDescription>
+          Prices in £, before VAT. Storage is charged by the day: a box kept 15 days pays half a month.
+        </FieldDescription>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="rc-tax">VAT</FieldLabel>
+            <Select value={taxRateId} onValueChange={(v) => setTaxRateId(v ?? taxRateId)}>
+              <SelectTrigger id="rc-tax">
+                <SelectValue getLabel={(v) => SAGE_TAX_RATES.find((t) => t.id === v)?.label ?? v} />
+              </SelectTrigger>
+              <SelectContent>
+                {SAGE_TAX_RATES.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="rc-notes">Notes (optional)</FieldLabel>
+            <Input id="rc-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+        </div>
+      </FieldGroup>
+      {inline ? <div className="mt-4 flex justify-end">{saveButton}</div> : <DialogFooter>{saveButton}</DialogFooter>}
+    </>
+  )
+}
+
+/** New card for a client (or the default card). It starts on its date and closes the card it replaces. */
+function RateCardDialog({ from, label, defaultOnly }: { from?: RateCard; label: string; defaultOnly?: boolean }) {
+  const [open, setOpen] = useState(false)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size={from ? "sm" : "default"} variant={from ? "outline" : "default"} />}>
@@ -100,89 +213,11 @@ function RateCardDialog({ from, label }: { from?: RateCard; label: string }) {
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {from ? `New prices for ${from.clientName ?? "the default card"}` : "New rate card"}
+            {from ? `New prices for ${from.clientName ?? "the default card"}` : defaultOnly ? "Default rate list" : "New rate card"}
           </DialogTitle>
         </DialogHeader>
-        <FieldGroup>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="rc-client">For</FieldLabel>
-              <Select value={clientId} onValueChange={(v) => setClientId(v ?? clientId)} disabled={!!from}>
-                <SelectTrigger id="rc-client">
-                  <SelectValue getLabel={clientName} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={DEFAULT_CLIENT}>Default (all clients)</SelectItem>
-                  {clients?.map((c) => (
-                    <SelectItem key={c.ClientId} value={c.ClientId}>
-                      {c.Client}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="rc-from">Starts on</FieldLabel>
-              <Input
-                id="rc-from"
-                type="date"
-                value={effectiveFrom}
-                onChange={(e) => setEffectiveFrom(e.target.value)}
-              />
-            </Field>
-          </div>
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Storage per box / month, by size</p>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {sizes.map((s) => (
-                <Field key={s.code}>
-                  <FieldLabel htmlFor={`rc-storage-${s.code}`}>
-                    {s.name}
-                    {!s.active && " (retired)"}
-                  </FieldLabel>
-                  <Input
-                    id={`rc-storage-${s.code}`}
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={storageValue(s.code)}
-                    onChange={(e) => setStorageTyped({ ...storageTyped, [s.code]: e.target.value })}
-                  />
-                </Field>
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">{rateKeys.map((k) => price(k, RATE_LABEL[k]))}</div>
-          <FieldDescription>
-            Prices in £, before VAT. Storage is charged by the day: a box kept 15 days pays half a month.
-          </FieldDescription>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="rc-tax">VAT</FieldLabel>
-              <Select value={taxRateId} onValueChange={(v) => setTaxRateId(v ?? taxRateId)}>
-                <SelectTrigger id="rc-tax">
-                  <SelectValue getLabel={(v) => SAGE_TAX_RATES.find((t) => t.id === v)?.label ?? v} />
-                </SelectTrigger>
-                <SelectContent>
-                  {SAGE_TAX_RATES.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="rc-notes">Notes (optional)</FieldLabel>
-              <Input id="rc-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </Field>
-          </div>
-        </FieldGroup>
-        <DialogFooter>
-          <Button onClick={submit} disabled={!effectiveFrom || !pricesOk || create.isPending}>
-            {create.isPending ? "Saving…" : "Save rate card"}
-          </Button>
-        </DialogFooter>
+        {/* a fresh form each time the dialog opens */}
+        {open && <RateCardForm from={from} defaultOnly={defaultOnly} onSaved={() => setOpen(false)} />}
       </DialogContent>
     </Dialog>
   )
@@ -226,7 +261,8 @@ function CardView({ card, canManage }: { card: RateCard; canManage: boolean }) {
       {live && unpriced.length > 0 && (
         <p className="text-status-hold text-xs">
           No storage price for {unpriced.map((s) => s.name).join(", ")} — those boxes are stored free until a new card
-          prices them{canManage ? " (Change prices)" : ""}.
+          prices them
+          {canManage ? " (Change prices)" : ""}.
         </p>
       )}
       {card.notes && <p className="text-muted-foreground text-xs">{card.notes}</p>}
@@ -254,6 +290,44 @@ export function RateCardsScreen() {
       ) : (
         <div className="space-y-3">
           {data.map((card) => (
+            <CardView key={card.id} card={card} canManage={canManage} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Settings → Default Rate List: the default card only — the prices every client without its own card is charged — the
+ * one in use first, then the older ones. Changing prices starts a new dated card, as in Billing → Rate cards.
+ */
+export function DefaultRateListScreen() {
+  const canManage = useCan("billing.manage")
+  const { data, isLoading } = useRateCards()
+  const cards = (data ?? []).filter((c) => !c.clientId)
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        icon={Invoice}
+        title="Default Rate List"
+        description="The prices for every client that has no rate card of its own. New prices start on their date."
+        actions={
+          canManage && !cards.some((c) => !c.effectiveTo) ? (
+            <RateCardDialog label="Add default rate list" defaultOnly />
+          ) : undefined
+        }
+      />
+      {isLoading ? (
+        <Skeleton className="h-48 w-full" />
+      ) : cards.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          No default rate list yet{canManage ? " — add one so every client has prices." : "."}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {cards.map((card) => (
             <CardView key={card.id} card={card} canManage={canManage} />
           ))}
         </div>

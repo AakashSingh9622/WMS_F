@@ -202,9 +202,14 @@ export function ImportBoxesScreen() {
         title="Import boxes from a file"
         description="Register many boxes at once from an Excel (.xlsx) or CSV file. Every row is checked first — if one is wrong, nothing is imported."
         actions={
-          <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/app/boxes/new" />}>
-            Register one batch instead
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/app/boxes/import-records" />}>
+              Import records instead
+            </Button>
+            <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/app/boxes/new" />}>
+              Register one batch instead
+            </Button>
+          </div>
         }
       />
 

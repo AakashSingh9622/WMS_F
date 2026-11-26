@@ -14,7 +14,8 @@ import type { Rack, Warehouse, WarehouseLayout } from "@/api/types"
 import { CapacityBar } from "@/components/capacity-bar"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { capacityLevel } from "@/lib/capacity"
-import { formatLength, toCentimetres, type LengthUnit } from "@/domain/dimensions"
+import { type LengthUnit } from "@/domain/dimensions"
+import { CellSizeFields, EMPTY_MODULE_SIZE, checkModuleSize, moduleSizeRequest, type ModuleSize } from "./cell-size-fields"
 import { aisleTitle } from "@/domain/location"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -22,7 +23,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { ManageLayoutDialog, RackPlacementFields } from "@/staff/features/warehouses/manage-layout-dialog"
 
@@ -144,13 +144,14 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
   const [label, setLabel] = useState("")
   const [rows, setRows] = useState("4")
   const [columns, setColumns] = useState("6")
-  const [cellLength, setCellLength] = useState("")
+  const [moduleSize, setModuleSize] = useState<ModuleSize>(EMPTY_MODULE_SIZE)
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>("ft")
   const [placement, setPlacement] = useState({ zoneId: "", aisleId: "" })
   const createRack = useCreateRack()
 
-  const lengthCm = Number(cellLength) > 0 ? toCentimetres(Number(cellLength), lengthUnit) : 0
-  const cellCount = (Number(rows) || 0) * (Number(columns) || 0)
+  const shelfCount = Math.min(Math.max(Math.floor(Number(rows)) || 0, 0), 100)
+  const columnCount = Math.max(Math.floor(Number(columns)) || 0, 0)
+  const sizeCheck = checkModuleSize(moduleSize, lengthUnit, shelfCount)
 
   async function submit() {
     try {
@@ -158,9 +159,9 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
         warehouseId,
         code,
         label,
-        rows: Number(rows) || 1,
-        columns: Number(columns) || 1,
-        cellLength: Number(cellLength),
+        rows: shelfCount || 1,
+        columns: columnCount || 1,
+        ...moduleSizeRequest(moduleSize, shelfCount),
         lengthUnit,
         zoneId: placement.zoneId || undefined,
         aisleId: placement.aisleId || undefined,
@@ -169,7 +170,7 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
       setOpen(false)
       setCode("")
       setLabel("")
-      setCellLength("")
+      setModuleSize(EMPTY_MODULE_SIZE)
     } catch (err) {
       onError(err)
     }
@@ -202,10 +203,10 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
           />
           <Field>
             <FieldLabel htmlFor="rack-rows">Shelves (rows)</FieldLabel>
-            <Input id="rack-rows" type="number" min={1} value={rows} onChange={(e) => setRows(e.target.value)} />
+            <Input id="rack-rows" type="number" min={1} max={100} value={rows} onChange={(e) => setRows(e.target.value)} />
           </Field>
           <Field>
-            <FieldLabel htmlFor="rack-columns">Positions per shelf (columns)</FieldLabel>
+            <FieldLabel htmlFor="rack-columns">Number of columns per shelf</FieldLabel>
             <Input
               id="rack-columns"
               type="number"
@@ -214,45 +215,18 @@ function AddRackDialog({ warehouseId, layout }: { warehouseId: string; layout?: 
               onChange={(e) => setColumns(e.target.value)}
             />
           </Field>
-          <Field>
-            <FieldLabel htmlFor="rack-cell-length">Length of one cell</FieldLabel>
-            <div className="flex gap-2">
-              <Input
-                id="rack-cell-length"
-                type="number"
-                min={0}
-                step="any"
-                value={cellLength}
-                onChange={(e) => setCellLength(e.target.value)}
-                placeholder="e.g. 4"
-              />
-              <Select value={lengthUnit} onValueChange={(v) => setLengthUnit((v as LengthUnit) ?? "ft")}>
-                <SelectTrigger className="w-24" aria-label="Length unit">
-                  <SelectValue getLabel={(v) => (v === "cm" ? "cm" : "feet")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cm">cm</SelectItem>
-                  <SelectItem value="ft">feet</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <p className="text-muted-foreground text-xs">
-              Each row × column cell is one storage location of this length (not split into smaller slots). Feet are
-              converted to centimetres and saved.
-              {lengthCm > 0 && (
-                <>
-                  {" "}
-                  <span className="text-foreground tabular-nums">
-                    = {formatLength(lengthCm)} per cell · {cellCount} cells · {(lengthCm * cellCount).toLocaleString()}{" "}
-                    cm total
-                  </span>
-                </>
-              )}
-            </p>
-          </Field>
+          <CellSizeFields
+            idPrefix="rack-cell"
+            size={moduleSize}
+            unit={lengthUnit}
+            onSizeChange={setModuleSize}
+            onUnitChange={setLengthUnit}
+            shelfCount={shelfCount}
+            columns={columnCount}
+          />
         </FieldGroup>
         <DialogFooter>
-          <Button onClick={submit} disabled={!code || !label || lengthCm <= 0 || createRack.isPending}>
+          <Button onClick={submit} disabled={!code || !label || shelfCount < 1 || columnCount < 1 || !sizeCheck.ok || createRack.isPending}>
             {createRack.isPending ? "Adding…" : "Add module"}
           </Button>
         </DialogFooter>

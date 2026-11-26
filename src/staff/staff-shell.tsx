@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import type { ReactNode } from "react"
 import {
+  ClipboardCheck,
   ClipboardList,
   Invoice,
   LayoutDashboard,
@@ -25,6 +26,7 @@ import { staffNavItems } from "@/domain/navigation"
 import { can } from "@/domain/permissions"
 import { UserMenu } from "@/components/user-menu"
 import { ScanBoxButton } from "@/staff/features/scanning/scan-box-dialog"
+import { AddClientButton } from "@/staff/features/clients/add-client-dialog"
 import { NotificationBell } from "@/staff/features/notifications/notification-bell"
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs"
 import {
@@ -45,6 +47,7 @@ const navIcons: Record<string, AppIcon> = {
   "/app": LayoutDashboard,
   "/app/boxes": Search,
   "/app/orders": ClipboardList,
+  "/app/record-requests": ClipboardCheck,
   "/app/warehouses": MapPin,
   "/app/clients": Users,
   "/app/exceptions": TriangleAlertIcon,
@@ -118,6 +121,7 @@ export function StaffShell({ children }: { children: ReactNode }) {
               <PageBreadcrumbs />
             </div>
             <div className="flex items-center gap-2">
+              <AddClientButton />
               <ScanBoxButton />
               <NotificationBell />
               <UserMenu />

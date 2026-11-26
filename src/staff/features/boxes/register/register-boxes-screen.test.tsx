@@ -22,10 +22,10 @@ vi.mock("@/api/audit", () => ({
   }),
 }))
 vi.mock("@/api/settings", () => ({
-  useBoxLengths: () => ({ standard: 40, large: 80 }),
+  useBoxVolumes: () => ({ standard: 100000, large: 200000 }),
   useBoxSizes: () => [
-    { code: "standard", name: "Standard", lengthCm: 40, active: true, builtIn: true, boxCount: 0 },
-    { code: "large", name: "Large", lengthCm: 80, active: true, builtIn: true, boxCount: 0 },
+    { code: "standard", name: "Standard", lengthCm: 40, heightCm: 50, depthCm: 50, active: true, builtIn: true, boxCount: 0 },
+    { code: "large", name: "Large", lengthCm: 80, heightCm: 50, depthCm: 50, active: true, builtIn: true, boxCount: 0 },
   ],
   useBoxSizeName: () => (code: string) => (code === "large" ? "Large" : "Standard"),
 }))

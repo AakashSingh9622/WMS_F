@@ -1,0 +1,23 @@
+Daily Report - 20 Nov 2026
+
+1. Record requests: staff can request many records at once, with a requests list, status changes (deliver, cancel, return), delivery note and witness slips.
+2. Returns by internal code with a shelving list, and a purge-by-file screen with a second-person approval (a different person must approve).
+3. Move records between boxes by Excel (same client and file, all or nothing, history kept).
+4. Client portal: clients can see the records in a box and ask for the original or a digital copy; staff accept it first. Includes notifications, request history and duplicate protection.
+5. Import record requests from a file (contacts checked against DocuSoft, large files split into groups of 100) and a new "Records on loan" export.
+6. Returns shelving sheet as Excel (item 10c) - DONE and pushed:
+   - New export "Returned records to shelve" (Settings > Exports, with client and return-date filters) and a "Download Excel" button on the Return Records page.
+   - One shelving order everywhere (Return Records screen, print page and Excel), the same as the pick list: warehouse, zone, aisle, rack, shelf, position, box. Records with no location come last. Older location formats are supported.
+   - File shelving-list-YYYY-MM-DD.xlsx, sheet "To shelve", all cells as text, ISO dates, blank location when there is none.
+   - Fixed the old Item 10b test so it only checks its own test records.
+7. Import returns by file (Importar Devoluciones) - built and tested, waiting for review (not committed yet):
+   - New "Import returns" screen on the Return Records page: choose client, download template, upload Excel or CSV (up to 500 rows), Check file, Confirm, Return.
+   - Every row is checked first; wrong rows are shown with their Excel row number and nothing is returned if any row is wrong.
+   - After the import: shelving list with Print and Download Excel, same walking order, unallocated boxes last.
+   - The manual return by internal code is unchanged.
+8. All changes tested on the real database and in a real browser; backend tests (about 360 checks across 12 suites) and 31 browser checks pass. Item 6 is pushed; item 7 is waiting for approval.
+
+Pending / next:
+- Review and commit/push of Import returns (backend + frontend separately).
+- Purge approval: a second Records manager must test Approve/Reject in the real UI.
+- Not started yet: Item 10d (edit requests) and Item 12 (reports "Number of records" from real records).

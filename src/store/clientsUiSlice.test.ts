@@ -5,6 +5,7 @@ import reducer, {
   clientsUiReset,
   clientsUiRestored,
   filterChanged,
+  folderDefaulted,
   folderSelected,
   pageChanged,
   searchChanged,
@@ -19,7 +20,7 @@ describe("clientsUiSlice", () => {
     let state = reducer(undefined, folderSelected("12"))
     state = reducer(state, searchChanged("tat"))
     state = reducer(state, pageChanged(3))
-    expect(state).toEqual({ folderId: "12", q: "tat", page: 3, selectedClient: null, ...defaults })
+    expect(state).toEqual({ folderId: "12", folderChosen: true, q: "tat", page: 3, selectedClient: null, ...defaults })
   })
 
   it("picking another folder clears the old search and page", () => {
@@ -27,7 +28,7 @@ describe("clientsUiSlice", () => {
     state = reducer(state, searchChanged("tat"))
     state = reducer(state, pageChanged(3))
     state = reducer(state, folderSelected("7"))
-    expect(state).toEqual({ folderId: "7", q: "", page: 1, selectedClient: null, ...defaults })
+    expect(state).toEqual({ folderId: "7", folderChosen: true, q: "", page: 1, selectedClient: null, ...defaults })
   })
 
   it("a new search goes back to page 1", () => {
@@ -46,7 +47,7 @@ describe("clientsUiSlice", () => {
 
   it("reset (logout/login) forgets everything", () => {
     const state = reducer(reducer(undefined, folderSelected("12")), clientsUiReset())
-    expect(state).toEqual({ folderId: "", q: "", page: 1, selectedClient: null, ...defaults })
+    expect(state).toEqual({ folderId: "", folderChosen: false, q: "", page: 1, selectedClient: null, ...defaults })
   })
 
   it("remembers the filter and sort; changing either goes back to page 1", () => {
@@ -59,6 +60,13 @@ describe("clientsUiSlice", () => {
 
   it("a state saved before filters existed is restored with the default filter and sort", () => {
     const old = { folderId: "12", q: "", page: 2, selectedClient: null } as unknown as ClientsUiState
-    expect(reducer(undefined, clientsUiRestored(old))).toEqual({ ...old, ...defaults })
+    expect(reducer(undefined, clientsUiRestored(old))).toEqual({ ...old, folderChosen: false, ...defaults })
+  })
+
+  it("opens on the default folder only while nothing has been picked", () => {
+    expect(reducer(undefined, folderDefaulted("5"))).toMatchObject({ folderId: "5", folderChosen: true })
+    // a folder picked by hand (even All folders) is never replaced by the default
+    expect(reducer(reducer(undefined, folderSelected("")), folderDefaulted("5"))).toMatchObject({ folderId: "" })
+    expect(reducer(reducer(undefined, folderSelected("7")), folderDefaulted("5"))).toMatchObject({ folderId: "7" })
   })
 })

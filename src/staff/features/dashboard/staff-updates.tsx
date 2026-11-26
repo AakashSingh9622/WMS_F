@@ -11,8 +11,9 @@ import { Skeleton } from "@/components/ui/skeleton"
  * In-app updates for staff (no email yet): what clients did in the portal. Unread ones (per staff member, the same as
  * the bell in the top bar) are marked; opening one marks it read.
  */
-export function StaffUpdates() {
-  const { data, isLoading } = useStaffNotifications(8)
+export function StaffUpdates({ limit = 8 }: { limit?: number }) {
+  // the dashboard shows only the latest few; the bell in the top bar lists more
+  const { data, isLoading } = useStaffNotifications(limit)
   const markRead = useMarkNotificationRead()
 
   return (

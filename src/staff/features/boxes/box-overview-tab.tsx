@@ -6,11 +6,12 @@ import Link from "next/link"
 import { useBox } from "@/api/boxes"
 import { useAuditSearch } from "@/api/audit"
 import { useCustomFields } from "@/api/customFields"
-import { boxLengthCm } from "@/domain/dimensions"
+import { DEFAULT_DEPTH_CM, DEFAULT_HEIGHT_CM, BOX_LENGTH_CM, boxVolume, formatDimensions, formatVolume } from "@/domain/dimensions"
 import { useBoxSizeName } from "@/api/settings"
 import { shelfAndPosition } from "@/domain/location"
 import { AuditTimeline } from "@/components/audit-timeline"
 import { Skeleton } from "@/components/ui/skeleton"
+import { BoxPlacement } from "@/staff/features/boxes/box-placement"
 
 function Field({ label, value, href }: { label: string; value?: string | null; href?: string }) {
   return (
@@ -63,7 +64,7 @@ export function BoxOverviewTab({ boxId }: { boxId: string }) {
             <Field label="Barcode" value={box.barcode} />
             <Field label="Client" value={box.clientName} />
             {box.expedienteCode && <Field label="Expediente" value={box.expedienteCode} />}
-            <Field label="Size" value={`${sizeName(box.size)} (${box.lengthCm ?? boxLengthCm(box.size)} cm)`} />
+            <Field label="Size" value={`${sizeName(box.size)} (${formatDimensions(box.lengthCm ?? BOX_LENGTH_CM[box.size] ?? BOX_LENGTH_CM.standard, box.heightCm ?? DEFAULT_HEIGHT_CM, box.depthCm ?? DEFAULT_DEPTH_CM)} · ${formatVolume(boxVolume(box))})`} />
           </dl>
         </section>
 
@@ -118,19 +119,24 @@ export function BoxOverviewTab({ boxId }: { boxId: string }) {
             <Field label="Container type" value={box.containerType} />
           </dl>
         </section>
+
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Recent activity</h2>
+            <Link
+              href={`/app/boxes/${boxId}/history`}
+              className="text-primary text-xs underline-offset-2 hover:underline"
+            >
+              View all
+            </Link>
+          </div>
+          <AuditTimeline events={audit?.items ?? []} orderHref={(id) => `/app/orders/${id}`} />
+        </section>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Recent activity</h2>
-          <Link
-            href={`/app/boxes/${boxId}/history`}
-            className="text-primary text-xs underline-offset-2 hover:underline"
-          >
-            View all
-          </Link>
-        </div>
-        <AuditTimeline events={audit?.items ?? []} orderHref={(id) => `/app/orders/${id}`} />
+      {/* where the box stands, beside the details; stays in view while the details scroll */}
+      <div className="lg:sticky lg:top-0 lg:self-start">
+        <BoxPlacement box={box} />
       </div>
     </div>
   )

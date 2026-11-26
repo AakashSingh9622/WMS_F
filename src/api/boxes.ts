@@ -510,3 +510,18 @@ export function useRemoveBoxContent() {
     onSuccess: () => invalidateBoxesAndShared(queryClient),
   })
 }
+
+export interface DocumentUploadLog {
+  documents: { name: string; section?: string }[]
+  /** The order the upload was made from, so it shows in that order's Activity as well as the box history. */
+  orderId?: string
+}
+
+/** Writes "uploaded document X" to the box history (and the order's Activity). The files themselves go to DocuSoft. */
+export function useRecordDocumentUpload(boxId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: DocumentUploadLog) => apiClient.post(`/boxes/${boxId}/document-uploads`, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["audit"] }),
+  })
+}

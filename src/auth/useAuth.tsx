@@ -6,7 +6,12 @@ import { useDispatch } from "react-redux"
 
 import { SESSION_COOKIE } from "@/auth/session-shared"
 import { DOCUSOFT_BASE_URL } from "@/store/docusoftConfig"
-import { clearDocusoftCredentials, getDocusoftCredentials, storeDocusoftCredentials } from "@/store/docusoftCreds"
+import {
+  clearDocusoftCredentials,
+  getDocusoftCredentials,
+  storeDocusoftCredentials,
+  storeProjectId,
+} from "@/store/docusoftCreds"
 import { docusoftApi } from "@/store/docusoftApi"
 import { clientsUiReset } from "@/store/clientsUiSlice"
 import type { Role } from "@/api/types"
@@ -49,6 +54,24 @@ async function fetchDocusoftUserName(agrno: string, email: string, encodedPasswo
     const wrapper = (await res.json()) as { d?: string }
     const data = wrapper.d ? (JSON.parse(wrapper.d) as { Table?: { UserName?: string }[] }) : {}
     return data.Table?.[0]?.UserName?.trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+// The user's ProjectId — Json_GetAccessToken answers with it in `d`; "", "-1" and "0" mean "none".
+// Best-effort like the name above: a failure must never block login.
+async function fetchDocusoftProjectId(agrno: string, email: string, encodedPassword: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(`${DOCUSOFT_BASE_URL}/Json_GetAccessToken`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ agrno, Email: email, password: encodedPassword }),
+    })
+    if (!res.ok) return undefined
+    const wrapper = (await res.json()) as { d?: string }
+    const value = typeof wrapper.d === "string" ? wrapper.d.trim() : ""
+    return value && value !== "-1" && value !== "0" ? value : undefined
   } catch {
     return undefined
   }
@@ -103,8 +126,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         dispatch(docusoftApi.util.resetApiState())
         dispatch(clientsUiReset())
         const password = btoa(input.password)
-        const userName = await fetchDocusoftUserName(data.agrno, input.email, password)
+        const [userName, projectId] = await Promise.all([
+          fetchDocusoftUserName(data.agrno, input.email, password),
+          fetchDocusoftProjectId(data.agrno, input.email, password),
+        ])
         storeDocusoftCredentials({ agrno: data.agrno, Email: input.email, password, userName })
+        if (projectId) storeProjectId(projectId)
         if (userName) return { ...data.user, name: userName }
       }
       return data.user

@@ -78,6 +78,8 @@ export function generateLocationSeed(rng: () => number = mulberry32(SEED)): Loca
         rows: ROWS,
         columns: COLUMNS,
         cellLengthCm: SLOT_CAPACITY, // legacy mock data (unused by the real backend) — treated as cm
+        cellHeightCm: 50,
+        cellDepthCm: 50,
         usedCapacity: 0,
         totalCapacity: rackTotal,
       })

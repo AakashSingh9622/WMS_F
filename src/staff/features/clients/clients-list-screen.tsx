@@ -2,7 +2,7 @@
 
 import { Search, Users } from "@/components/icons"
 import { PageHeader } from "@/components/page-header"
-import { useMemo } from "react"
+import { useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 
 import {
@@ -16,10 +16,12 @@ import {
 import { useClientStats, type ClientStats } from "@/api/clients"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
+import { getStoredProjectId } from "@/store/docusoftCreds"
 import {
   clientSelected,
   filterChanged,
   folderSelected,
+  folderDefaulted,
   pageChanged,
   searchChanged,
   sortChanged,
@@ -199,11 +201,24 @@ export function ClientsListScreen() {
   const router = useRouter()
   const dispatch = useAppDispatch()
   // Folder / search / filter / sort / page live in Redux so they survive navigating away and back (clientsUiSlice.ts).
-  const { folderId, q, page, filter, sort } = useAppSelector((state) => state.clientsUi)
+  const { folderId, folderChosen, q, page, filter, sort } = useAppSelector((state) => state.clientsUi)
   const allFolders = !folderId
   const projectId = allFolders ? undefined : Number(folderId)
 
   const { data: folders, isError: foldersError } = useGetFoldersQuery()
+
+  // Nothing picked yet: open on the user's default folder (localStorage "ProjectId", saved at login) when it's one
+  // of their folders; otherwise All folders. A folder picked by hand always wins.
+  useEffect(() => {
+    if (folderChosen || folderId || !folders) return
+    let stored: string | null = null
+    try {
+      stored = getStoredProjectId()
+    } catch {
+      // storage blocked: stay on All folders
+    }
+    if (stored && folders.some((f) => String(f.FolderID) === stored)) dispatch(folderDefaulted(stored))
+  }, [folderChosen, folderId, folders, dispatch])
   const folderClients = useGetFolderClientsQuery(projectId ?? 0, { skip: allFolders })
   const everyClient = useGetClientsWithDetailsQuery(undefined, { skip: !allFolders })
   const { data: statsData } = useClientStats()

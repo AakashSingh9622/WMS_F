@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { isLockedSlot } from "@/domain/status"
 import { cn } from "@/lib/utils"
+import { formatVolume } from "@/domain/dimensions"
 
 const ALL = "__all"
 const NONE = "__none"
@@ -25,6 +26,14 @@ type Found = Extract<LocationLookup, { kind: "position" | "shelf" | "rack" }>
  * shelf, "B04-3-2" one position — which also fills in the browse lists below; or browse warehouse → zone → aisle →
  * rack and click a position. Zone and aisle lists only appear when the warehouse has them.
  */
+/** What a picked position is called, for a "file here?" confirmation. */
+export interface PickedPlace {
+  code: string
+  module?: string
+  shelf: number
+  position: number
+}
+
 export function ChooseLocation({
   needCm,
   selectedSlotId,
@@ -32,13 +41,14 @@ export function ChooseLocation({
   pickLabel = "Use this position",
   onPick,
 }: {
-  /** cm the box(es) need — the shelf lookup suggests the position that fits it best. */
+  /** Space (cm³) the box(es) need — the shelf lookup suggests the position that fits it best. (Wire name `needCm` is historic.) */
   needCm: number
   /** Highlighted in the grid (e.g. the box's current position when moving). */
   selectedSlotId?: string
   disabled?: boolean
   pickLabel?: string
-  onPick: (slot: Slot) => void | Promise<unknown>
+  /** `where` names the picked position for a confirmation: its module and the code staff type ("B04-3-2"). */
+  onPick: (slot: Slot, where: PickedPlace) => void | Promise<unknown>
 }) {
   const [code, setCode] = useState("")
   const [result, setResult] = useState<LocationLookup | null>(null)
@@ -99,7 +109,15 @@ export function ChooseLocation({
   }
 
   async function pick(slot: Slot) {
-    await onPick(slot)
+    const rack =
+      layout?.racks.find((r) => r.id === slot.rackId) ??
+      (result && result.kind !== "not_found" && result.kind !== "ambiguous" && result.rack.id === slot.rackId ? result.rack : undefined)
+    await onPick(slot, {
+      code: rack ? `${rack.code}-${slot.row}-${slot.column}` : slot.barcode,
+      module: rack ? `${rack.label} (${rack.code})` : undefined,
+      shelf: slot.row,
+      position: slot.column,
+    })
     if (result && result.kind !== "not_found" && result.kind !== "ambiguous")
       void find(result.code, { rackId: result.rack.id })
   }
@@ -429,7 +447,7 @@ function LookupResult({
               >
                 <span className="block font-medium">Position {p.column}</span>
                 <span className="text-muted-foreground tabular-nums">
-                  {isLockedSlot(p.status) ? p.status : `${free} cm free`}
+                  {isLockedSlot(p.status) ? p.status : `${formatVolume(free)} free`}
                   {p.id === found.suggestedSlotId && " · best fit"}
                 </span>
               </button>
@@ -438,7 +456,7 @@ function LookupResult({
         </div>
         {!found.suggestedSlotId && (
           <p className="text-muted-foreground text-xs">
-            {found.kind === "position" ? "This position doesn't" : "No position on this shelf"} has {needCm} cm free —
+            {found.kind === "position" ? "This position doesn't" : "No position on this shelf"} has {formatVolume(needCm)} free —
             choose one to fill what fits, or try another shelf.
           </p>
         )}

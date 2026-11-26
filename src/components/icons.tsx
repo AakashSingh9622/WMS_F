@@ -38,6 +38,12 @@ function make(name: string): AppIcon {
 // Names used below — keep sorted; the layout's Google Fonts URL is built from this list.
 export const MATERIAL_ICON_NAMES = [
   "add_box",
+  "apartment",
+  "call",
+  "campaign",
+  "flag",
+  "numbers",
+  "supervisor_account",
   "arrow_downward",
   "arrow_forward",
   "arrow_upward",
@@ -97,6 +103,12 @@ export const MATERIAL_ICON_NAMES = [
 
 // Same names the screens already used (so call sites only change their import path).
 export const ArrowDown = make("arrow_downward")
+export const Building = make("apartment")
+export const Phone = make("call")
+export const Megaphone = make("campaign")
+export const Flag = make("flag")
+export const Hash = make("numbers")
+export const Manager = make("supervisor_account")
 export const ArrowDownToLine = make("move_to_inbox")
 export const ArrowRight = make("arrow_forward")
 export const ArrowUp = make("arrow_upward")

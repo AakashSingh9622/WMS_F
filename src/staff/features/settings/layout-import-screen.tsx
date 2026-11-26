@@ -7,7 +7,8 @@ import { toast } from "sonner"
 
 import { ApiError } from "@/api/client"
 import { useImportLayout, type LayoutImportResult, type LayoutRow } from "@/api/layoutImport"
-import { useBoxLengths, useBoxSizes } from "@/api/settings"
+import { useBoxSizes } from "@/api/settings"
+import { BOX_LENGTH_CM, DEFAULT_DEPTH_CM, DEFAULT_HEIGHT_CM, formatDimensions, formatVolume, sizeVolumeCm3 } from "@/domain/dimensions"
 import { useWarehouse } from "@/api/warehouses"
 import { Download } from "@/components/icons"
 import { Button } from "@/components/ui/button"
@@ -82,19 +83,29 @@ export function LayoutImportScreen() {
   const [rows, setRows] = useState<LayoutRow[]>([])
   const [fileProblem, setFileProblem] = useState("")
   const [columns, setColumns] = useState("4")
-  const lengths = useBoxLengths()
-  const standardCm = lengths.standard ?? 45
-  // A box takes one whole position, so a position must be at least as long as the biggest box meant to go there.
-  const biggest = useBoxSizes().filter((s) => s.active).reduce((best, s) => (s.lengthCm > best.lengthCm ? s : best), { name: "Standard", lengthCm: standardCm })
-  const [cellLength, setCellLength] = useState("") // empty = long enough for the biggest box size
+  const sizes = useBoxSizes()
+  const standard = sizes.find((s) => s.code === "standard") ?? { lengthCm: BOX_LENGTH_CM.standard, heightCm: DEFAULT_HEIGHT_CM, depthCm: DEFAULT_DEPTH_CM }
+  // A box takes one whole position, so a position must be at least as big as the biggest box meant to go there.
+  const biggest = sizes
+    .filter((s) => s.active)
+    .reduce((best, s) => (sizeVolumeCm3(s) > sizeVolumeCm3(best) ? s : best), { name: "Standard", ...standard })
+  // empty = as big as the biggest box size (each of length, height and depth)
+  const [cellLength, setCellLength] = useState("")
+  const [cellHeight, setCellHeight] = useState("")
+  const [cellDepth, setCellDepth] = useState("")
   const cellText = cellLength || String(biggest.lengthCm)
+  const heightText = cellHeight || String(biggest.heightCm)
+  const depthText = cellDepth || String(biggest.depthCm)
   const [rowErrors, setRowErrors] = useState<{ row: number; message: string }[]>([])
   const [checked, setChecked] = useState<LayoutImportResult | null>(null)
   const [done, setDone] = useState<LayoutImportResult | null>(null)
 
   const cols = Number(columns)
   const cell = Number(cellText)
-  const paramsOk = Number.isInteger(cols) && cols >= 1 && cols <= 50 && Number.isInteger(cell) && cell >= 1 && cell <= 1000
+  const cellH = Number(heightText)
+  const cellD = Number(depthText)
+  const dimOk = (n: number) => Number.isInteger(n) && n >= 1 && n <= 1000
+  const paramsOk = Number.isInteger(cols) && cols >= 1 && cols <= 50 && dimOk(cell) && dimOk(cellH) && dimOk(cellD)
 
   const reset = () => {
     setFileName("")
@@ -123,7 +134,7 @@ export function LayoutImportScreen() {
   const send = (dryRun: boolean) => {
     setRowErrors([])
     importLayout.mutate(
-      { rows, columns: cols, cellLengthCm: cell, dryRun },
+      { rows, columns: cols, cellLengthCm: cell, cellHeightCm: cellH, cellDepthCm: cellD, dryRun },
       {
         onSuccess: (r) => {
           if (dryRun) setChecked(r)
@@ -221,8 +232,16 @@ export function LayoutImportScreen() {
               <FieldLabel htmlFor="li-cell">Length of one position (cm)</FieldLabel>
               <Input id="li-cell" type="number" min={1} max={1000} value={cellText} onChange={(e) => (setCellLength(e.target.value), setChecked(null))} />
             </Field>
+            <Field>
+              <FieldLabel htmlFor="li-cell-height">Height of one position (cm)</FieldLabel>
+              <Input id="li-cell-height" type="number" min={1} max={1000} value={heightText} onChange={(e) => (setCellHeight(e.target.value), setChecked(null))} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="li-cell-depth">Depth (width) of one position (cm)</FieldLabel>
+              <Input id="li-cell-depth" type="number" min={1} max={1000} value={depthText} onChange={(e) => (setCellDepth(e.target.value), setChecked(null))} />
+            </Field>
           </div>
-          <FieldDescription>Not in the sheet, so they apply to every module. A standard box is {standardCm} cm and the biggest ({biggest.name}) is {biggest.lengthCm} cm. A box takes one whole position, so make it at least as long as the biggest box you want to store there.</FieldDescription>
+          <FieldDescription>Not in the sheet, so they apply to every module. A standard box is {formatDimensions(standard.lengthCm, standard.heightCm, standard.depthCm)} and the biggest ({biggest.name}) is {formatDimensions(biggest.lengthCm, biggest.heightCm, biggest.depthCm)} ({formatVolume(sizeVolumeCm3(biggest))}). A position&apos;s capacity is its length × height × depth{paramsOk ? " = " + formatVolume(cell * cellH * cellD) : ""} — make it at least as big as the biggest box you want to store there.</FieldDescription>
           <Field>
             <FieldLabel htmlFor="li-file">Excel or CSV file</FieldLabel>
             <input id="li-file" ref={fileInput} type="file" disabled={!!targetId && !target} accept={SPREADSHEET_ACCEPT} onChange={(e) => void onFile(e.target.files?.[0])} className="text-sm" />
